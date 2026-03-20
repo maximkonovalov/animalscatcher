@@ -27,8 +27,8 @@ TELEGRAM_CHAT_ID = config.get('TELEGRAM', 'chat_id')
 BASE_OUTPUT_FOLDER = config.get('PATHS', 'base_output_folder')
 LOG_FILE = config.get('PATHS', 'log_file')
 THRESHOLDS = {
-    0: config.getfloat('DETECTION', 'threshold_0'), 
-    1: config.getfloat('DETECTION', 'threshold_1'), 
+    0: config.getfloat('DETECTION', 'threshold_0'),
+    1: config.getfloat('DETECTION', 'threshold_1'),
     2: config.getfloat('DETECTION', 'threshold_2')
 }
 COOLDOWN = config.getint('DETECTION', 'cooldown')
@@ -46,9 +46,9 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp;stimeout;50000
 detection_queue = queue.Queue(maxsize=15)
 stats_lock = threading.Lock()
 stats = {
-    "Animal": 0, "Person": 0, "Vehicle": 0, 
-    "start_time": datetime.datetime.now(), 
-    "streams": {} 
+    "Animal": 0, "Person": 0, "Vehicle": 0,
+    "start_time": datetime.datetime.now(),
+    "streams": {}
 }
 
 def send_telegram_message(message):
@@ -61,7 +61,7 @@ def send_telegram_photo(photo_path, caption):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     try:
         with open(photo_path, "rb") as photo:
-            requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption}, 
+            requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption},
                           files={"photo": photo}, timeout=15)
     except: pass
 
@@ -86,7 +86,7 @@ def cleanup_engine():
                                 os.remove(file_path)
                                 deleted_count += 1
                             except: pass
-        
+
         # Log Truncation
         if os.path.exists(LOG_FILE):
             if (os.path.getsize(LOG_FILE) / (1024 * 1024)) > MAX_LOG_MB:
@@ -95,7 +95,7 @@ def cleanup_engine():
 
         with open(LOG_FILE, "a") as f:
             f.write(f"[{datetime.datetime.now()}] [SYSTEM] Cleanup: Removed {deleted_count} old snapshots.\n")
-        
+
         time.sleep(CLEANUP_INTERVAL * 3600)
 
 def summary_engine():
@@ -119,7 +119,7 @@ def camera_thread(cam_num):
     rtsp_url = f"rtsp://{USER}:{PASS}@{IP}:{PORT}/Streaming/Channels/{cam_num}02"
     os.makedirs(os.path.join(BASE_OUTPUT_FOLDER, cam_id), exist_ok=True)
     cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
-    
+
     f_idx = 0
     while True:
         success, frame = cap.read()
@@ -141,8 +141,8 @@ def ai_engine():
     model = pw_detection.MegaDetectorV6(version="MDV6-yolov9-c", device="cpu", pretrained=True)
     last_det = {}; motion_val = {}; names = {0: "Animal", 1: "Person", 2: "Vehicle"}
     # Colors for boxes (B, G, R)
-    colors = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255)} 
-    
+    colors = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255)}
+
     send_telegram_message("NVR SYSTEM ONLINE (DAEMON MODE)")
 
     while True:
@@ -154,33 +154,33 @@ def ai_engine():
         if det is not None and len(det.confidence) > 0:
             # Get image dimensions for coordinate scaling
             h, w, _ = frame.shape
-            
+
             for i in range(len(det.confidence)):
                 conf, cls = float(det.confidence[i]), int(det.class_id[i])
-                
+
                 if conf > THRESHOLDS.get(cls, 0.5):
                     seen[cls] = True
-                    
+
                     # Draw the rectangle on the frame (even if not sending yet)
                     # MegaDetector returns [x1, y1, x2, y2]
                     box = det.xyxy[i]
                     x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
-                    
+
                     color = colors.get(cls, (255, 255, 255))
                     label = f"{names[cls]} {conf:.2f}"
-                    
+
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                    cv2.putText(frame, label, (x1, y1 - 10), 
+                    cv2.putText(frame, label, (x1, y1 - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
                     # Trigger Telegram Alert logic
                     if motion_val.get((cam_id, cls), False) and (time.time() - last_det.get((cam_id, cls), 0) > COOLDOWN):
                         with stats_lock: stats[names[cls]] += 1
-                        
+
                         fname = f"{cam_id}_{int(time.time())}.jpg"
                         fpath = os.path.join(BASE_OUTPUT_FOLDER, cam_id, fname)
                         cv2.imwrite(fpath, frame)
-                        
+
                         caption = f"ALERT: {label} on {cam_id}"
                         threading.Thread(target=send_telegram_photo, args=(fpath, caption)).start()
                         last_det[(cam_id, cls)] = time.time()
@@ -193,12 +193,12 @@ if __name__ == "__main__":
     # Launch background workers
     for t in [ai_engine, summary_engine, cleanup_engine]:
         threading.Thread(target=t, daemon=True).start()
-    
+
     # Launch camera streams (Cam 4, 5, 6)
     for n in [4, 5, 6]:
         threading.Thread(target=camera_thread, args=(n,), daemon=True).start()
         time.sleep(2)
-        
+
     while True:
         time.sleep(1)
 
