@@ -34,7 +34,7 @@ Dependencies: opencv-python, PytorchWildlife, requests, configparser.
 Hardware: i3 CPU or better; requires internet access for initial model
 downloads.
 
-## Configuration (lts-mini.cfg)
+## Configuration (ac.cfg)
 
 The program relies on an external configuration file. Ensure the
 following sections are defined:
@@ -49,7 +49,7 @@ following sections are defined:
 
 ## Installation & Usage
 
-Deploy Code: Place lts-mini.py and lts-mini.cfg in a working directory..
+Deploy Code: Place ac.py and ac.cfg in a working directory..
 
 Install Dependencies:
 
@@ -57,7 +57,7 @@ Install Dependencies:
 
 Run the Daemon:
 
-`python3 lts-mini.py`
+`python3 ac.py`
 
 Monitor: Check the log file defined in your config or your Telegram
 channel for the "An animal catcher is online" startup message.
