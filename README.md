@@ -25,8 +25,6 @@ logic for unstable RTSP streams.
 
 ## System Requirements
 
-OS: macOS (optimized for /opt/local/bin/python3).
-
 Environment: Python 3.12+.
 
 Dependencies: opencv-python, PytorchWildlife, requests, configparser.
