@@ -1,0 +1,33 @@
+[CAMERA]
+user = <username>
+pass = <password>
+ip = 192.168.xx.xx
+port = 8554
+
+[TELEGRAM]
+token = <token>
+chat_id = <-100..>
+
+[DETECTION]
+# Animal, Person, Vehicle
+threshold_0 = 0.45
+threshold_1 = 0.75
+threshold_2 = 0.95
+cooldown = 20
+frame_interval = 10
+# Summary interval in hours (e.g., 6)
+summary_interval = 6
+
+[PATHS]
+base_output_folder = /home/ac/snaps
+log_file = /home/ac/ac_log.txt
+
+[CLEANUP]
+# Number of days to keep snapshots and log entries
+max_age_days = 7
+# How often to check for old files (in hours)
+cleanup_interval = 24
+# Maximum log file size in Megabytes before it resets
+max_log_size_mb = 5
+
+# EOF
