@@ -149,7 +149,7 @@ def ai_engine():
     last_det = {}; motion_val = {}; names = {0: "Animal", 1: "Person", 2: "Vehicle"}
     colors = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255)}
 
-    send_telegram_message(f"An animal catcher is online, version {VERSION}")
+    send_telegram_message(f"The animal catcher is online, version {VERSION}")
 
     while True:
         cam_id, frame = detection_queue.get()
