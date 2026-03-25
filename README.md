@@ -75,4 +75,4 @@ cleanup_engine: Keeps the system lean by purging old data.
 Note: On the first execution, the system will download approximately
 300MB of AI model weights. Ensure a stable connection is available.
 
-# EOF
+### EOF
