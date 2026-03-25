@@ -58,7 +58,7 @@ Run the Daemon:
     python3 ac.py
 
 Monitor: Check the log file defined in your config or your Telegram
-channel for the "An animal catcher is online" startup message.
+channel for the "The animal catcher is online" startup message.
 
 ## Project Structure
 
