@@ -53,7 +53,7 @@ Deploy Code: Place ac.py and ac.cfg in a working directory..
 
 Install Dependencies:
 
-`pip install opencv-python requests PytorchWildlife`
+`pip install -r requirements.txt`
 
 Run the Daemon:
 
