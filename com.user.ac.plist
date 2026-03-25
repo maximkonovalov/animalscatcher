@@ -18,9 +18,9 @@
     <key>WorkingDirectory</key>
     <string>/Users/maxim/nvr/</string>
     <key>StandardOutPath</key>
-    <string>/Users/maxim/nvr/ac_stdout.log</string>
+    <string>/Users/maxim/nvr/logs/ac_stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/maxim/nvr/ac_error.log</string>
+    <string>/Users/maxim/nvr/logs/ac_error.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOME</key>
