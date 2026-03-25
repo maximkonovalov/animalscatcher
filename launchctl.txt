@@ -1,0 +1,17 @@
+Stop & Unload
+
+sudo launchctl bootout system /Library/LaunchDaemons/com.user.ac.plist
+
+Start & Load
+
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.user.ac.plist
+
+Restart (Fast)
+
+sudo launchctl kickstart -k system/com.user.ac
+
+Verify
+
+sudo launchctl list | grep com.user.ac
+
+# EOF
