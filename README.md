@@ -1,5 +1,5 @@
-Animal Catcher is a lightweight, AI-powered surveillance tool designed
-for macOS. It processes RTSP camera streams to detect and identify wildlife,
+Animal Catcher is a lightweight, AI-powered surveillance tool.
+It processes RTSP camera streams to detect and identify wildlife,
 people, and vehicles in real-time.
 
 By utilizing a two-stage AI pipeline, it first detects broad categories
