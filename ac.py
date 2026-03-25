@@ -12,11 +12,11 @@ from PytorchWildlife.models import detection as pw_detection
 from PytorchWildlife.models import classification as pw_classification
 
 # --- 0. VERSIONING ---
-VERSION = "0.1"
+VERSION = "0.2"
 
 # --- 1. LOAD CONFIGURATION ---
 config = configparser.ConfigParser()
-config_path = os.path.join(os.path.dirname(__file__), 'lts-mini.cfg')
+config_path = os.path.join(os.path.dirname(__file__), 'ac.cfg')
 config.read(config_path)
 
 # Camera & Telegram Settings
