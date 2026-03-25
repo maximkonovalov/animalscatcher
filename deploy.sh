@@ -2,11 +2,11 @@
 
 # --- CONFIGURATION ---
 PROJECT_DIR="/Users/maxim/nvr"
-PLIST_NAME="com.user.ltsmini.plist"
+PLIST_NAME="com.user.ac.plist"
 PLIST_SOURCE="$PROJECT_DIR/$PLIST_NAME"
 PLIST_DEST="/Library/LaunchDaemons/$PLIST_NAME"
 PYTHON_BIN="/opt/local/bin/python3"
-SERVICE_ID="system/com.user.ltsmini"
+SERVICE_ID="system/com.user.ac"
 
 echo "--- Starting Deployment for LTS-Mini ---"
 
@@ -32,8 +32,8 @@ $PYTHON_BIN -m pip install -q opencv-python requests configparser pytorchwildlif
 # 4. Restart the system service
 echo "[4/4] Restarting LTS-Mini Daemon..."
 # Attempt to restart the existing service first
-if sudo launchctl list | grep -q "com.user.ltsmini"; then
-    sudo launchctl kickstart -k system/com.user.ltsmini
+if sudo launchctl list | grep -q "com.user.ac"; then
+    sudo launchctl kickstart -k system/com.user.ac
 else
     # Only bootstrap if it's not loaded at all
     sudo launchctl bootstrap system "$PLIST_DEST"

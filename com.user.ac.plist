@@ -9,7 +9,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/opt/local/bin/python3</string>
-        <string>/Users/maxim/nvr/lts-mini.py</string>
+        <string>/Users/maxim/nvr/ac.py</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -18,9 +18,9 @@
     <key>WorkingDirectory</key>
     <string>/Users/maxim/nvr/</string>
     <key>StandardOutPath</key>
-    <string>/Users/maxim/nvr/nvr_stdout.log</string>
+    <string>/Users/maxim/nvr/ac_stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/maxim/nvr/nvr_error.log</string>
+    <string>/Users/maxim/nvr/ac_error.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOME</key>
