@@ -40,6 +40,7 @@ The program relies on an external configuration file. Ensure the
 following sections are defined:
 
 | Section   | Keys | Description |
+| :---      | :--- |        :--- |
 | CAMERA    | user, pass, ip, port | RTSP credentials and network address. |
 | TELEGRAM  | token, chat_id | Bot API token and target chat ID for alerts. |
 | PATHS     | base_output_folder, log_file | Storage locations for snapshots and system logs. |
