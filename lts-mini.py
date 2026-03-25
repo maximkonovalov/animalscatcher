@@ -9,6 +9,7 @@ import queue
 import requests
 import configparser
 from PytorchWildlife.models import detection as pw_detection
+from PytorchWildlife.models import classification as pw_classification
 
 # --- 1. LOAD CONFIGURATION ---
 config = configparser.ConfigParser()
@@ -39,6 +40,9 @@ SUMMARY_INTERVAL = config.getint('DETECTION', 'summary_interval')
 MAX_AGE_DAYS = config.getint('CLEANUP', 'max_age_days')
 CLEANUP_INTERVAL = config.getint('CLEANUP', 'cleanup_interval')
 MAX_LOG_MB = config.getint('CLEANUP', 'max_log_size_mb')
+
+# Species Settings
+SPECIES_THRESHOLD = 0.6
 
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp;stimeout;5000000"
 
@@ -74,7 +78,6 @@ def cleanup_engine():
         cutoff = now - (MAX_AGE_DAYS * 86400)
         deleted_count = 0
 
-        # Snapshot Cleanup
         if os.path.exists(BASE_OUTPUT_FOLDER):
             for cam_dir in os.listdir(BASE_OUTPUT_FOLDER):
                 path = os.path.join(BASE_OUTPUT_FOLDER, cam_dir)
@@ -87,7 +90,6 @@ def cleanup_engine():
                                 deleted_count += 1
                             except: pass
 
-        # Log Truncation
         if os.path.exists(LOG_FILE):
             if (os.path.getsize(LOG_FILE) / (1024 * 1024)) > MAX_LOG_MB:
                 with open(LOG_FILE, "w") as f:
@@ -109,7 +111,6 @@ def summary_engine():
                       f"Range: {stats['start_time'].strftime('%H:%M')} - {now.strftime('%H:%M')}\n\n"
                       f"STREAMS:\n{s_info}\n\n"
                       f"DETECTIONS:\n- Animals: {stats['Animal']}\n- People: {stats['Person']}\n- Vehicles: {stats['Vehicle']}")
-            # Reset counters
             stats.update({"Animal": 0, "Person": 0, "Vehicle": 0, "start_time": now})
         send_telegram_message(report)
 
@@ -137,22 +138,23 @@ def camera_thread(cam_num):
         f_idx += 1
 
 def ai_engine():
-    """Processes frames from the queue and draws bounding boxes on detections."""
-    model = pw_detection.MegaDetectorV6(version="MDV6-yolov9-c", device="cpu", pretrained=True)
+    """Processes frames: Detects objects and identifies species for animals."""
+    detector = pw_detection.MegaDetectorV6(version="MDV6-yolov9-c", device="cpu", pretrained=True)
+    # Corrected class name for standard Deepfaune
+    classifier = pw_classification.DeepfauneClassifier(device="cpu")
+
     last_det = {}; motion_val = {}; names = {0: "Animal", 1: "Person", 2: "Vehicle"}
-    # Colors for boxes (B, G, R)
     colors = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255)}
 
     send_telegram_message("NVR SYSTEM ONLINE (DAEMON MODE)")
 
     while True:
         cam_id, frame = detection_queue.get()
-        results = model.single_image_detection(frame)
+        results = detector.single_image_detection(frame)
         det = results.get("detections")
         seen = {0: False, 1: False, 2: False}
 
         if det is not None and len(det.confidence) > 0:
-            # Get image dimensions for coordinate scaling
             h, w, _ = frame.shape
 
             for i in range(len(det.confidence)):
@@ -160,27 +162,30 @@ def ai_engine():
 
                 if conf > THRESHOLDS.get(cls, 0.5):
                     seen[cls] = True
-
-                    # Draw the rectangle on the frame (even if not sending yet)
-                    # MegaDetector returns [x1, y1, x2, y2]
+                    label = names.get(cls, "Object")
                     box = det.xyxy[i]
                     x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
 
-                    color = colors.get(cls, (255, 255, 255))
-                    label = f"{names[cls]} {conf:.2f}"
+                    if cls == 0 and conf > SPECIES_THRESHOLD:
+                        crop = frame[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
+                        if crop.size > 0:
+                            s_res = classifier.single_image_classification(crop)
+                            # Deepfaune typically returns 'label' and 'confidence' in results
+                            s_label = s_res['label']
+                            s_conf = s_res['confidence']
+                            if s_conf > SPECIES_THRESHOLD:
+                                label = f"{s_label} ({s_conf:.2f})"
 
+                    color = colors.get(cls, (255, 255, 255))
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                     cv2.putText(frame, label, (x1, y1 - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-                    # Trigger Telegram Alert logic
                     if motion_val.get((cam_id, cls), False) and (time.time() - last_det.get((cam_id, cls), 0) > COOLDOWN):
                         with stats_lock: stats[names[cls]] += 1
-
                         fname = f"{cam_id}_{int(time.time())}.jpg"
                         fpath = os.path.join(BASE_OUTPUT_FOLDER, cam_id, fname)
                         cv2.imwrite(fpath, frame)
-
                         caption = f"ALERT: {label} on {cam_id}"
                         threading.Thread(target=send_telegram_photo, args=(fpath, caption)).start()
                         last_det[(cam_id, cls)] = time.time()
@@ -190,11 +195,9 @@ def ai_engine():
 
 # --- 4. STARTUP ---
 if __name__ == "__main__":
-    # Launch background workers
     for t in [ai_engine, summary_engine, cleanup_engine]:
         threading.Thread(target=t, daemon=True).start()
 
-    # Launch camera streams (Cam 4, 5, 6)
     for n in [4, 5, 6]:
         threading.Thread(target=camera_thread, args=(n,), daemon=True).start()
         time.sleep(2)
