@@ -11,6 +11,9 @@ import configparser
 from PytorchWildlife.models import detection as pw_detection
 from PytorchWildlife.models import classification as pw_classification
 
+# --- 0. VERSIONING ---
+VERSION = "0.1"
+
 # --- 1. LOAD CONFIGURATION ---
 config = configparser.ConfigParser()
 config_path = os.path.join(os.path.dirname(__file__), 'lts-mini.cfg')
@@ -108,6 +111,7 @@ def summary_engine():
             now = datetime.datetime.now()
             s_info = "\n".join([f"- {k}: {v['status']} ({v['res']})" for k,v in stats["streams"].items()])
             report = (f"--- NVR SUMMARY ---\n"
+                      f"Version: {VERSION}\n"
                       f"Range: {stats['start_time'].strftime('%H:%M')} - {now.strftime('%H:%M')}\n\n"
                       f"STREAMS:\n{s_info}\n\n"
                       f"DETECTIONS:\n- Animals: {stats['Animal']}\n- People: {stats['Person']}\n- Vehicles: {stats['Vehicle']}")
@@ -140,13 +144,12 @@ def camera_thread(cam_num):
 def ai_engine():
     """Processes frames: Detects objects and identifies species for animals."""
     detector = pw_detection.MegaDetectorV6(version="MDV6-yolov9-c", device="cpu", pretrained=True)
-    # Corrected class name for standard Deepfaune
     classifier = pw_classification.DeepfauneClassifier(device="cpu")
 
     last_det = {}; motion_val = {}; names = {0: "Animal", 1: "Person", 2: "Vehicle"}
     colors = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255)}
 
-    send_telegram_message("NVR SYSTEM ONLINE (DAEMON MODE)")
+    send_telegram_message(f"An animal catcher is online, version {VERSION}")
 
     while True:
         cam_id, frame = detection_queue.get()
@@ -170,13 +173,12 @@ def ai_engine():
                         crop = frame[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
                         if crop.size > 0:
                             s_res = classifier.single_image_classification(crop)
-                            # Deepfaune typically returns 'label' and 'confidence' in results
                             s_label = s_res['label']
                             s_conf = s_res['confidence']
                             if s_conf > SPECIES_THRESHOLD:
                                 label = f"{s_label} ({s_conf:.2f})"
 
-                    color = colors.get(cls, (255, 255, 255))
+                    color = colors.get(cls, (255, 0, 0)) if cls == 1 else colors.get(cls, (0, 255, 0))
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                     cv2.putText(frame, label, (x1, y1 - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
@@ -195,6 +197,8 @@ def ai_engine():
 
 # --- 4. STARTUP ---
 if __name__ == "__main__":
+    print(f"Starting Animal Catcher v{VERSION}...")
+
     for t in [ai_engine, summary_engine, cleanup_engine]:
         threading.Thread(target=t, daemon=True).start()
 
