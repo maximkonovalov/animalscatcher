@@ -53,11 +53,13 @@ Deploy Code: Place ac.py and ac.cfg in a working directory..
 
 Install Dependencies:
 
-`pip install -r requirements.txt`
+```bash
+pip install -r requirements.txt```
 
 Run the Daemon:
 
-`python3 ac.py`
+```bash
+python3 ac.py```
 
 Monitor: Check the log file defined in your config or your Telegram
 channel for the "An animal catcher is online" startup message.
