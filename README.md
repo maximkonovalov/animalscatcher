@@ -49,15 +49,15 @@ following sections are defined:
 
 ## Installation & Usage
 
-Deploy Code: Place lts-mini.py and lts-mini.cfg in /Users/maxim/nvr/.
+Deploy Code: Place lts-mini.py and lts-mini.cfg in a working directory..
 
 Install Dependencies:
 
-pip install opencv-python requests PytorchWildlife
+`pip install opencv-python requests PytorchWildlife`
 
 Run the Daemon:
 
-python3 lts-mini.py
+`python3 lts-mini.py`
 
 Monitor: Check the log file defined in your config or your Telegram
 channel for the "An animal catcher is online" startup message.
