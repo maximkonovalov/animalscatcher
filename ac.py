@@ -12,7 +12,7 @@ from PytorchWildlife.models import detection as pw_detection
 from PytorchWildlife.models import classification as pw_classification
 
 # --- 0. VERSIONING ---
-VERSION = "0.2"
+VERSION = "0.3"
 
 # --- 1. LOAD CONFIGURATION ---
 config = configparser.ConfigParser()
@@ -165,18 +165,22 @@ def ai_engine():
 
                 if conf > THRESHOLDS.get(cls, 0.5):
                     seen[cls] = True
-                    label = names.get(cls, "Object")
+                    obj_name = names.get(cls, "Object")
+                    label = f"{obj_name} ({conf:.2f})"
                     box = det.xyxy[i]
                     x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
 
                     if cls == 0 and conf > SPECIES_THRESHOLD:
                         crop = frame[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
                         if crop.size > 0:
-                            s_res = classifier.single_image_classification(crop)
-                            s_label = s_res['label']
-                            s_conf = s_res['confidence']
-                            if s_conf > SPECIES_THRESHOLD:
-                                label = f"{s_label} ({s_conf:.2f})"
+                            try:
+                                s_res = classifier.single_image_classification(crop)
+                                res = s_res[0] if isinstance(s_res, list) else s_res
+                                s_label = res['label']
+                                s_conf = res['confidence']
+                                if s_conf > SPECIES_THRESHOLD:
+                                    label = f"{obj_name}: {s_label} ({s_conf:.2f})"
+                            except: pass
 
                     color = colors.get(cls, (255, 0, 0)) if cls == 1 else colors.get(cls, (0, 255, 0))
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
@@ -184,7 +188,7 @@ def ai_engine():
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
                     if motion_val.get((cam_id, cls), False) and (time.time() - last_det.get((cam_id, cls), 0) > COOLDOWN):
-                        with stats_lock: stats[names[cls]] += 1
+                        with stats_lock: stats[obj_name] += 1
                         fname = f"{cam_id}_{int(time.time())}.jpg"
                         fpath = os.path.join(BASE_OUTPUT_FOLDER, cam_id, fname)
                         cv2.imwrite(fpath, frame)
