@@ -12,7 +12,7 @@ from PytorchWildlife.models import detection as pw_detection
 from PytorchWildlife.models import classification as pw_classification
 
 # --- 0. VERSIONING ---
-VERSION = "0.3"
+VERSION = "0.4"
 
 # --- 1. LOAD CONFIGURATION ---
 config = configparser.ConfigParser()
@@ -45,7 +45,7 @@ CLEANUP_INTERVAL = config.getint('CLEANUP', 'cleanup_interval')
 MAX_LOG_MB = config.getint('CLEANUP', 'max_log_size_mb')
 
 # Species Settings
-SPECIES_THRESHOLD = 0.6
+SPECIES_THRESHOLD = 0.45
 
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp;stimeout;5000000"
 
@@ -176,11 +176,15 @@ def ai_engine():
                             try:
                                 s_res = classifier.single_image_classification(crop)
                                 res = s_res[0] if isinstance(s_res, list) else s_res
-                                s_label = res['label']
-                                s_conf = res['confidence']
+                                # Safer key extraction: checks for label/prediction and confidence/y_conf
+                                s_label = res.get('label') or res.get('prediction') or res.get('y_pred') or "Unknown"
+                                s_conf = res.get('confidence') or res.get('y_conf') or 0.0
                                 if s_conf > SPECIES_THRESHOLD:
                                     label = f"{obj_name}: {s_label} ({s_conf:.2f})"
-                            except: pass
+                                    print(f"DEBUG: Found species {s_label} with {s_conf:.2f} confidence")
+                            except Exception as e:
+                                with open(LOG_FILE, "a") as f:
+                                    f.write(f"[{datetime.datetime.now()}] [DEBUG] Classifier Error: {e} | Keys: {list(res.keys()) if 'res' in locals() else 'N/A'}\n")
 
                     color = colors.get(cls, (255, 0, 0)) if cls == 1 else colors.get(cls, (0, 255, 0))
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
