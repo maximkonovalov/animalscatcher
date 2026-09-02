@@ -17,6 +17,11 @@ cooldown = 20
 frame_interval = 10
 # Summary interval in hours (e.g., 6)
 summary_interval = 6
+# Minimum confidence to accept a species classification (Stage 2)
+species_threshold = 0.45
+# Tolerance for "Static" object detection, as a fraction of frame
+# width/height (e.g., 0.03 = approx 3%)
+static_tolerance = 0.03
 
 [PATHS]
 base_output_folder = /home/ac/snaps

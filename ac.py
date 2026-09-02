@@ -1,4 +1,4 @@
-#!/opt/local/bin/python3
+#!/usr/bin/env python3
 
 import cv2
 import os
@@ -44,16 +44,14 @@ THRESHOLDS = {
 COOLDOWN = config.getint('DETECTION', 'cooldown')
 FRAME_INTERVAL = config.getint('DETECTION', 'frame_interval')
 SUMMARY_INTERVAL = config.getint('DETECTION', 'summary_interval')
+SPECIES_THRESHOLD = config.getfloat('DETECTION', 'species_threshold')
+# Tolerance for "Static" object detection, as a fraction of frame width/height.
+STATIC_TOLERANCE = config.getfloat('DETECTION', 'static_tolerance')
 
 # Cleanup Settings
 MAX_AGE_DAYS = config.getint('CLEANUP', 'max_age_days')
 CLEANUP_INTERVAL = config.getint('CLEANUP', 'cleanup_interval')
 MAX_LOG_MB = config.getint('CLEANUP', 'max_log_size_mb')
-
-# Species Settings
-SPECIES_THRESHOLD = 0.45
-# Tolerance for "Static" object detection (approx 3% of frame width/height)
-STATIC_TOLERANCE = 0.03
 
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = ("rtsp_transport;tcp|"
                                                "stimeout;5000000")
@@ -130,7 +128,7 @@ def summary_engine():
         with stats_lock:
             now = datetime.datetime.now()
             s_list = [f"- {k}: {v['status']} ({v['res']})"
-                      for k,v in stats["streams"].items()]
+                      for k, v in stats["streams"].items()]
             s_info = "\n".join(s_list)
             report = (f"--- NVR SUMMARY ---\n"
                       f"Version: {VERSION}\n"
@@ -183,7 +181,9 @@ def ai_engine():
         send_telegram_message(f"Animal Catcher FAILED to start: "
                               f"could not load AI models ({e})")
         os._exit(1)
-    last_det = {}; motion_val = {}; last_box = {}
+    last_det = {}
+    motion_val = {}
+    last_box = {}
     names = {0: "Animal", 1: "Person", 2: "Vehicle"}
     colors = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255)}
     send_telegram_message(f"The animal catcher is online, version {VERSION}")
@@ -232,11 +232,12 @@ def ai_engine():
                         is_static = False
                         if d_key in last_box:
                             lb = last_box[d_key]
-                            if (abs(x1-lb[0]) < w*STATIC_TOLERANCE and
-                                abs(y1-lb[1]) < h*STATIC_TOLERANCE):
+                            if (abs(x1 - lb[0]) < w * STATIC_TOLERANCE and
+                                abs(y1 - lb[1]) < h * STATIC_TOLERANCE):
                                 is_static = True
                         if not is_static:
-                            with stats_lock: stats[obj_name] += 1
+                            with stats_lock:
+                                stats[obj_name] += 1
                             last_box[d_key] = (x1, y1, x2, y2)
                             fname = f"{cam_id}_{int(time.time())}.jpg"
                             fpath = os.path.join(BASE_OUTPUT_FOLDER,
@@ -248,7 +249,8 @@ def ai_engine():
                         else:
                             logger.info(f"[FILTER] Static {obj_name} ignored "
                                        f"on {cam_id} at ({x1},{y1})")
-        for c in [0,1,2]: motion_val[(cam_id, c)] = seen[c]
+        for c in [0, 1, 2]:
+            motion_val[(cam_id, c)] = seen[c]
         detection_queue.task_done()
 
 # --- 5. STARTUP ---
@@ -265,6 +267,7 @@ if __name__ == "__main__":
     for n in [4, 5, 6]:
         threading.Thread(target=camera_thread, args=(n,), daemon=True).start()
         time.sleep(2)
-    while True: time.sleep(1)
+    while True:
+        time.sleep(1)
 
 # EOF
