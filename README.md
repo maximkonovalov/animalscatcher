@@ -57,6 +57,16 @@ Deploy Code: Place ac.py and ac.cfg in a working directory..
 
 Install Dependencies:
 
+`PytorchWildlife` pulls in `torch` as a transitive dependency. On Linux
+and Windows, a plain `pip install` grabs the CUDA-enabled build by
+default, which is several gigabytes even though this project only runs
+on CPU. Install the CPU-only build first to avoid that download
+(macOS wheels are already CPU/MPS-only, so this step is unnecessary there):
+
+    pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+Then install the pinned project dependencies:
+
     pip install -r requirements.txt
 
 Run the Daemon:
