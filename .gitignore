@@ -1,0 +1,23 @@
+# Local configuration (contains RTSP/Telegram credentials)
+ac.cfg
+
+# Logs
+*.log
+logs/
+
+# Snapshots / detection output
+snaps/
+
+# AI model weight caches (downloaded on first run)
+*.pt
+*.pth
+checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store

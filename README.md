@@ -45,6 +45,12 @@ following sections are defined:
 | DETECTION | threshold_0-2, cooldown | Confidence thresholds and alert frequency. |
 | CLEANUP | max_age_days, max_log_size_mb | Retention policies for data management. |
 
+`ac.cfg` holds RTSP and Telegram credentials in plaintext and must never be
+committed (it's covered by `.gitignore`). Since the daemon typically runs as
+root via launchd, lock the file down to the owning user:
+
+    chmod 600 ac.cfg
+
 ## Installation & Usage
 
 Deploy Code: Place ac.py and ac.cfg in a working directory..
