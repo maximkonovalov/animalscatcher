@@ -89,4 +89,14 @@ cleanup_engine: Keeps the system lean by purging old data.
 Note: On the first execution, the system will download approximately
 300MB of AI model weights. Ensure a stable connection is available.
 
+## Development
+
+Install the pinned dev tooling and lint before committing:
+
+    pip install -r requirements-dev.txt
+    ruff check ac.py
+
+A GitHub Actions workflow (`.github/workflows/lint.yml`) runs the same
+check, plus a syntax check, on every push and pull request.
+
 ### EOF

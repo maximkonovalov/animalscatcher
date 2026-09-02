@@ -1,0 +1,2 @@
+# Development-only tooling; not needed to run the daemon itself.
+ruff==0.8.6
