@@ -8,11 +8,12 @@ import threading
 import queue
 import requests
 import configparser
+from urllib.parse import quote
 from PytorchWildlife.models import detection as pw_detection
 from PytorchWildlife.models import classification as pw_classification
 
 # --- 0. VERSIONING ---
-VERSION = "0.4"
+VERSION = "0.5"
 
 # --- 1. LOAD CONFIGURATION ---
 config = configparser.ConfigParser()
@@ -49,7 +50,7 @@ SPECIES_THRESHOLD = 0.45
 # Tolerance for "Static" object detection (approx 3% of frame width/height)
 STATIC_TOLERANCE = 0.03
 
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = ("rtsp_transport;tcp;"
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = ("rtsp_transport;tcp|"
                                                "stimeout;5000000")
 
 # --- 2. SHARED DATA & LOCKS ---
@@ -130,7 +131,9 @@ def summary_engine():
 def camera_thread(cam_num):
     """Maintains RTSP connection and samples frames for the AI."""
     cam_id = f"cam0{cam_num}"
-    url = f"rtsp://{USER}:{PASS}@{IP}:{PORT}/Streaming/Channels/{cam_num}02"
+    user = quote(USER, safe='')
+    password = quote(PASS, safe='')
+    url = f"rtsp://{user}:{password}@{IP}:{PORT}/Streaming/Channels/{cam_num}02"
     os.makedirs(os.path.join(BASE_OUTPUT_FOLDER, cam_id), exist_ok=True)
     cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
     f_idx = 0
@@ -185,8 +188,9 @@ def ai_engine():
                                 s_label = (res.get('label') or
                                            res.get('prediction') or
                                            res.get('y_pred') or "Unknown")
-                                s_conf = (res.get('confidence') or
-                                          res.get('y_conf') or 0.0)
+                                s_conf = next((v for v in
+                                    (res.get('confidence'), res.get('y_conf'))
+                                    if v is not None), 0.0)
                                 if s_conf > SPECIES_THRESHOLD:
                                     label = f"{obj_name}: {s_label} ({s_conf:.2f})"
                             except: pass
