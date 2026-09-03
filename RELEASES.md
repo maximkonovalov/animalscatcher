@@ -46,7 +46,7 @@ Fixed:
     does a full unload/reload. bootout is asynchronous, so a
     bootstrap run immediately after it can itself fail with a generic
     "Input/output error" while launchd is still tearing the old job
-    down -- deploy.sh now waits 1s between the two.
+    down -- deploy.sh now waits 3s between the two.
 
 v0.10 - 2026-09-03
 ------------------
