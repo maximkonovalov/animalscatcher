@@ -4,16 +4,16 @@
 <dict>
     <key>Label</key>
     <string>com.user.ac</string>
-    <!-- UserName requires /opt/local/bin/python3.10 to be code-signed
-         (even just ad-hoc: sudo codesign -f -s - /opt/local/bin/python3.10,
-         same as deploy.sh does on every deploy). A completely unsigned
-         interpreter running as this LaunchDaemon's dropped-privilege UID
-         (no root, no attached login session) gets its outbound network
-         silently blocked by macOS. Root and real interactive sessions
-         (SSH, sudo -u, screen sharing) are both unaffected regardless of
-         signature, which is what made this so confusing to isolate. -->
-    <key>UserName</key>
-    <string>maxim</string>
+    <!-- No UserName (runs as root), TEMPORARY, revisit. Dropping
+         privileges to maxim via UserName still breaks this daemon's
+         outbound connectivity even after ad-hoc code-signing
+         /opt/local/bin/python3.10 (deploy.sh does this on every deploy
+         regardless, since it's a real prerequisite either way). Signing
+         fixed one confirmed cause (an unsigned interpreter dropped to a
+         session-less, non-root UID) but evidently isn't sufficient by
+         itself, so root is the known-working interim state while this
+         gets debugged further. See RELEASES.md v0.8 for the full
+         investigation so far. -->
     <key>ProgramArguments</key>
     <array>
         <string>/opt/local/bin/python3.10</string>

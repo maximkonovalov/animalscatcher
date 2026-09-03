@@ -68,9 +68,9 @@ actually load and run real inference (not mocked) with no errors, and
 the DFNE output was confirmed to already match ac.py's existing result
 parsing.
 
-Also fixed, found while deploying the above to the real target machine
+Also investigated while deploying the above to the real target machine
 (same v0.8, no separate version bump -- these are deploy-config/docs
-changes, not code):
+changes, not code). Partially resolved; see UNRESOLVED note below:
 
   - camera_thread couldn't connect to the RTSP camera at all
     ("No route to host"), which looked like a Python 3.10-vs-3.12
@@ -89,17 +89,20 @@ changes, not code):
     way, TCC (both the system and per-user databases), pf, System
     Extensions, installed configuration profiles, and Screen Time were
     all individually checked and ruled out as the cause.
-  - Fix: `sudo codesign -f -s - /opt/local/bin/python3.10` (ad-hoc
-    signing, same as python3.12 already had). deploy.sh now runs this
-    on every deploy rather than as a one-time fix, since MacPorts
-    doesn't sign its builds and a future `port upgrade`/reinstall of
-    python310 would silently strip the signature and reintroduce this
-    exact failure.
-  - com.user.ac.plist's UserName was briefly removed (running the
-    daemon as root) as an interim workaround while the actual cause was
-    still unknown; restored once the real fix was confirmed, since
-    running as root was never the intended fix -- just the one
-    configuration proven to work at the time.
+  - Partial fix: `sudo codesign -f -s - /opt/local/bin/python3.10`
+    (ad-hoc signing, same as python3.12 already had). deploy.sh now
+    runs this on every deploy regardless of the UserName question
+    below, since MacPorts doesn't sign its builds and a future
+    `port upgrade`/reinstall of python310 would silently strip the
+    signature -- it's a real prerequisite either way.
+  - UNRESOLVED: after signing, UserName: maxim still broke outbound
+    connectivity on a later deploy. Signing fixed one confirmed,
+    reproduced cause (an unsigned interpreter dropped to a non-root,
+    session-less UID gets blocked), but evidently isn't sufficient by
+    itself -- there's at least one more factor still unidentified.
+    com.user.ac.plist is back to running as root (no UserName) as the
+    known-working interim state; revisit and find the rest of the
+    cause before restoring the privilege drop.
 
 v0.7 - 2026-09-02
 ------------------
