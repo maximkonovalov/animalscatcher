@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 
-import cv2
-import os
-import sys
-import signal
-import datetime
-import time
-import threading
-import queue
-import logging
-from logging.handlers import RotatingFileHandler
-from concurrent.futures import ThreadPoolExecutor
-import requests
 import configparser
+import datetime
+import logging
+import os
+import queue
+import signal
+import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from logging.handlers import RotatingFileHandler
 from urllib.parse import quote
-from PytorchWildlife.models import detection as pw_detection
+
+import cv2
+import requests
 from PytorchWildlife.models import classification as pw_classification
+from PytorchWildlife.models import detection as pw_detection
 
 # --- 0. VERSIONING ---
 VERSION = "0.8"

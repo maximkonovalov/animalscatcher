@@ -1,0 +1,23 @@
+# Pinned lint policy for this project, so `ruff check ac.py` gives the
+# same result regardless of which ruff version happens to be installed
+# -- ruff's own default rule set has grown across releases, and a newer
+# ruff run without this file picks up rules this project deliberately
+# doesn't want (see below).
+
+[lint]
+select = ["E", "W", "F"]
+
+# Deliberately NOT selected, despite being common ruff defaults on
+# newer versions:
+#
+# BLE001 (flake8-blind-except) flags every `except Exception:`. Those
+# are intentional throughout ac.py: each background thread's main loop
+# catches broadly on purpose, since PytorchWildlife/cv2/requests can
+# raise error types that can't all be enumerated in advance, and the
+# whole point of that design is that one unexpected error shouldn't
+# kill the daemon.
+#
+# DTZ005 (flake8-datetimez) flags datetime.datetime.now() calls with no
+# tz argument. This is a single-machine tool whose displayed
+# timestamps (log lines, Telegram alerts) are meant to be local
+# wall-clock time, not something that needs timezone-aware handling.

@@ -106,6 +106,12 @@ Install the pinned dev tooling, lint, and run the tests before committing
     pip install -r requirements.txt   # tests import ac.py directly
     pytest tests/
 
+`ruff.toml` pins the project's actual lint rule selection (and
+documents why a couple of ruff's newer default rules -- broad
+`except Exception`, naive `datetime.now()` -- are deliberately not
+enabled here), so `ruff check ac.py` gives the same result regardless
+of which ruff version happens to be installed.
+
 A GitHub Actions workflow (`.github/workflows/ci.yml`) runs the same
 lint/syntax checks and the test suite (on Python 3.10) on every push
 and pull request.

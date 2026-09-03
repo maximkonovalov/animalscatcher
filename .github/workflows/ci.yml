@@ -20,8 +20,11 @@ jobs:
       - name: Check syntax
         run: python -m py_compile ac.py
 
+      # Rule selection lives in ruff.toml (not here), so this matches
+      # exactly what `ruff check ac.py` does anywhere, regardless of
+      # which ruff version is installed.
       - name: Run ruff
-        run: ruff check --select E,W,F ac.py
+        run: ruff check ac.py
 
   test:
     runs-on: ubuntu-latest
