@@ -22,6 +22,13 @@ Documentation polish, no functional code changes:
     https://code.usgs.gov/vtcfwru/deepfaune-new-england -- the latter
     pulled directly from PytorchWildlife 1.3.0's own DFNE.py docstring
     rather than guessed).
+  - deploy.sh's echo output still called the target machine
+    "LTS-Mini", an old nickname unrelated to this project; renamed to
+    "Animals Catcher".
+  - README now notes that com.user.ac.plist and deploy.sh hardcode a
+    path and username (/Users/maxim/nvr, /opt/local/bin/python3.10,
+    UserName maxim) specific to the machine this project was developed
+    against, and need editing before use elsewhere.
 
 v0.9 - 2026-09-03
 ------------------
