@@ -13,7 +13,7 @@ PLIST_DEST="/Library/LaunchDaemons/$PLIST_NAME"
 PYTHON_BIN="/opt/local/bin/python3.10"
 SERVICE_ID="system/com.user.ac"
 
-echo "--- Starting Deployment for LTS-Mini ---"
+echo "--- Starting Deployment for Animals Catcher ---"
 
 if [ ! -x "$PYTHON_BIN" ]; then
     echo "Error: $PYTHON_BIN not found. Install it (e.g. 'sudo port install python310') before deploying."
@@ -55,7 +55,7 @@ echo "[4/5] Checking Python dependencies..."
 $PYTHON_BIN -m pip install -q -r "$PROJECT_DIR/requirements.txt"
 
 # 5. Restart the system service
-echo "[5/5] Restarting LTS-Mini Daemon..."
+echo "[5/5] Restarting Animals Catcher Daemon..."
 # Attempt to restart the existing service first
 if sudo launchctl list | grep -q "com.user.ac"; then
     sudo launchctl kickstart -k system/com.user.ac
