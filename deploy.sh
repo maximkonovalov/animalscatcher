@@ -77,6 +77,10 @@ $PYTHON_BIN -m pip install -q -r "$PROJECT_DIR/requirements.txt"
 # log-reopen handler) went unnoticed until a manual bootout+bootstrap.
 echo "[6/6] Restarting Animals Catcher Daemon..."
 sudo launchctl bootout system/com.user.ac 2>/dev/null
+# bootout is asynchronous; bootstrapping again immediately can hit a
+# generic "Input/output error" while launchd is still tearing the old
+# job down (seen firsthand debugging this).
+sleep 1
 sudo launchctl bootstrap system "$PLIST_DEST"
 
 echo "--- Deployment Successful ---"
