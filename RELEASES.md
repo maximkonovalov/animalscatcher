@@ -1,6 +1,43 @@
 Release History
 ===============
 
+v0.9 - 2026-09-03
+------------------
+
+Version bump only, no other code changes.
+
+Also retried the UserName maxim privilege drop (com.user.ac.plist)
+that v0.8 left running as root as an interim, unresolved state:
+
+  - Built a standalone diagnostic (debug/rtsp_probe.py) that isolates
+    RTSP/network behavior from AI model loading entirely: reports
+    process identity (uid/euid/user), does a raw TCP connect to the
+    camera, then a cv2.VideoCapture probe using the exact URL, quoting,
+    and FFmpeg options camera_thread() actually uses. Run once as root
+    and once as UserName maxim (same signed python3.10) via two
+    throwaway LaunchDaemons, so their output could be diffed directly.
+  - First run 404'd identically under both identities -- turned out to
+    be a bug in the probe itself (a bare rtsp://user:pass@ip:port with
+    no path), not a privilege difference; fixed to match ac.py's real
+    /Streaming/Channels/{cam_num}02 URL.
+  - With the corrected URL, both identities came back identical: TCP
+    connect and RTSP frame read both succeeded under maxim, unlike the
+    earlier "No route to host" symptom. Restored UserName: maxim in
+    com.user.ac.plist on the strength of that result.
+  - Along the way: `launchctl bootstrap system` for a new LaunchDaemon
+    requires the plist to be owned by root:wheel in a non-writable
+    location (e.g. /Library/LaunchDaemons) -- the same requirement
+    deploy.sh already handles for com.user.ac.plist. Also, once a
+    RunAtLoad-only (no KeepAlive) job has run and exited, a later
+    bootstrap of that same plist can fail with a generic "Input/output
+    error" even though `kickstart` reports the service isn't loaded;
+    an explicit `launchctl bootout` first resolved it.
+  - Still not a confirmed fix: the same signing fix looked clean once
+    before (v0.8) and then broke again for reasons never isolated, so
+    this is being watched closely in production rather than treated as
+    resolved. Revert to no UserName (runs as root) in com.user.ac.plist
+    if it recurs.
+
 v0.8 - 2026-09-03
 ------------------
 
