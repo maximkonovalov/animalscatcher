@@ -21,29 +21,41 @@ if [ ! -x "$PYTHON_BIN" ]; then
 fi
 
 # 1. Pull latest code from GitHub
-echo "[1/4] Pulling latest changes from GitHub..."
+echo "[1/5] Pulling latest changes from GitHub..."
 cd "$PROJECT_DIR" || { echo "Error: Project directory not found"; exit 1; }
 git pull origin main
 
 # 2. Sync the .plist to the system folder if changed
 if ! diff -q "$PLIST_SOURCE" "$PLIST_DEST" > /dev/null 2>&1; then
-    echo "[2/4] Updating system launcher (.plist)..."
+    echo "[2/5] Updating system launcher (.plist)..."
     sudo cp "$PLIST_SOURCE" "$PLIST_DEST"
     sudo chown root:wheel "$PLIST_DEST"
     sudo chmod 644 "$PLIST_DEST"
 else
-    echo "[2/4] Launcher (.plist) is already up to date."
+    echo "[2/5] Launcher (.plist) is already up to date."
 fi
 
-# 3. Ensure Python dependencies are installed (pinned versions -- the
+# 3. Ensure the interpreter is code-signed. com.user.ac.plist uses
+# UserName to drop privileges to an unprivileged account; a completely
+# unsigned interpreter running as that dropped-privilege, session-less
+# daemon UID gets its outbound network silently blocked by macOS (root
+# and real interactive sessions are unaffected regardless of signature,
+# which made this very hard to diagnose the first time it happened).
+# MacPorts doesn't sign its builds, and a `port upgrade`/reinstall wipes
+# any signature applied here, so re-sign on every deploy rather than
+# once -- an ad-hoc signature is a no-op to reapply if already present.
+echo "[3/5] Ensuring interpreter is code-signed..."
+sudo codesign -f -s - "$PYTHON_BIN"
+
+# 4. Ensure Python dependencies are installed (pinned versions -- the
 # full pinned set in requirements.txt, including numpy and setuptools,
 # is verified to resolve cleanly in one shot; see its comments for why
 # each pin is there).
-echo "[3/4] Checking Python dependencies..."
+echo "[4/5] Checking Python dependencies..."
 $PYTHON_BIN -m pip install -q -r "$PROJECT_DIR/requirements.txt"
 
-# 4. Restart the system service
-echo "[4/4] Restarting LTS-Mini Daemon..."
+# 5. Restart the system service
+echo "[5/5] Restarting LTS-Mini Daemon..."
 # Attempt to restart the existing service first
 if sudo launchctl list | grep -q "com.user.ac"; then
     sudo launchctl kickstart -k system/com.user.ac

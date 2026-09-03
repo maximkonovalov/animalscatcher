@@ -68,6 +68,39 @@ actually load and run real inference (not mocked) with no errors, and
 the DFNE output was confirmed to already match ac.py's existing result
 parsing.
 
+Also fixed, found while deploying the above to the real target machine
+(same v0.8, no separate version bump -- these are deploy-config/docs
+changes, not code):
+
+  - camera_thread couldn't connect to the RTSP camera at all
+    ("No route to host"), which looked like a Python 3.10-vs-3.12
+    regression for a long time since the daemon was last confirmed
+    working under 3.12. It wasn't: isolated testing (bare socket, then
+    cv2.VideoCapture, run as throwaway LaunchDaemons, then compared
+    against `sudo -u` and interactive runs) eventually isolated it to
+    /opt/local/bin/python3.10 being completely unsigned
+    (`codesign -dvv` reported "code object is not signed at all"),
+    while python3.12 happened to be ad-hoc signed. A LaunchDaemon that
+    drops privileges via UserName to a non-root, session-less UID gets
+    its outbound network silently blocked by macOS if the interpreter
+    has no code signature at all -- root and real interactive sessions
+    (SSH, sudo -u, Screen Sharing) are unaffected regardless of
+    signature, which is what made this so hard to isolate. Along the
+    way, TCC (both the system and per-user databases), pf, System
+    Extensions, installed configuration profiles, and Screen Time were
+    all individually checked and ruled out as the cause.
+  - Fix: `sudo codesign -f -s - /opt/local/bin/python3.10` (ad-hoc
+    signing, same as python3.12 already had). deploy.sh now runs this
+    on every deploy rather than as a one-time fix, since MacPorts
+    doesn't sign its builds and a future `port upgrade`/reinstall of
+    python310 would silently strip the signature and reintroduce this
+    exact failure.
+  - com.user.ac.plist's UserName was briefly removed (running the
+    daemon as root) as an interim workaround while the actual cause was
+    still unknown; restored once the real fix was confirmed, since
+    running as root was never the intended fix -- just the one
+    configuration proven to work at the time.
+
 v0.7 - 2026-09-02
 ------------------
 

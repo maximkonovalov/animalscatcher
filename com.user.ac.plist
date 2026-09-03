@@ -4,14 +4,16 @@
 <dict>
     <key>Label</key>
     <string>com.user.ac</string>
-    <!-- No UserName (runs as root): a UserName-based privilege drop to
-         maxim blocks this daemon's outbound LAN connections entirely,
-         confirmed by direct testing (root works, UserName: maxim does
-         not, for the identical connection). Root and unprivileged
-         interactive sessions as maxim are both unaffected; only a
-         background daemon dropped to that specific UID is blocked, by
-         some mechanism that isn't TCC, pf, a System Extension, or a
-         configuration profile (all checked and ruled out). -->
+    <!-- UserName requires /opt/local/bin/python3.10 to be code-signed
+         (even just ad-hoc: sudo codesign -f -s - /opt/local/bin/python3.10,
+         same as deploy.sh does on every deploy). A completely unsigned
+         interpreter running as this LaunchDaemon's dropped-privilege UID
+         (no root, no attached login session) gets its outbound network
+         silently blocked by macOS. Root and real interactive sessions
+         (SSH, sudo -u, screen sharing) are both unaffected regardless of
+         signature, which is what made this so confusing to isolate. -->
+    <key>UserName</key>
+    <string>maxim</string>
     <key>ProgramArguments</key>
     <array>
         <string>/opt/local/bin/python3.10</string>
