@@ -1,6 +1,11 @@
 # Pinned for reproducibility: PytorchWildlife's classifier output schema
 # has changed across releases (see the label/prediction/y_pred fallback
 # in ac.py), so an unpinned upgrade can silently break species labeling.
-opencv-python==4.10.0.84
+#
+# opencv-python-headless (not opencv-python): ac.py never uses any GUI
+# feature (no imshow/waitKey), and the non-headless build pulls in
+# libGL/GTK/X11 system libraries that a headless server or minimal
+# Linux CI image won't have installed.
+opencv-python-headless==4.10.0.84
 PytorchWildlife==1.1.1
 requests==2.32.3

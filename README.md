@@ -27,7 +27,8 @@ logic for unstable RTSP streams.
 
 Environment: Python 3.12+.
 
-Dependencies: opencv-python, PytorchWildlife, requests, configparser.
+Dependencies: opencv-python-headless, PytorchWildlife, requests,
+configparser.
 
 Hardware: i3 CPU or better; requires internet access for initial model
 downloads.
