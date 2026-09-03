@@ -5,10 +5,20 @@ PROJECT_DIR="/Users/maxim/nvr"
 PLIST_NAME="com.user.ac.plist"
 PLIST_SOURCE="$PROJECT_DIR/$PLIST_NAME"
 PLIST_DEST="/Library/LaunchDaemons/$PLIST_NAME"
-PYTHON_BIN="/opt/local/bin/python3"
+# Pinned to an exact interpreter, not the floating `python3` symlink:
+# PytorchWildlife==1.1.1's yolov5 dependency doesn't work on Python
+# 3.12 (see requirements.txt / README System Requirements), so an
+# unrelated `port upgrade python3` on this machine must not silently
+# break the daemon by repointing python3 -> 3.12.
+PYTHON_BIN="/opt/local/bin/python3.10"
 SERVICE_ID="system/com.user.ac"
 
 echo "--- Starting Deployment for LTS-Mini ---"
+
+if [ ! -x "$PYTHON_BIN" ]; then
+    echo "Error: $PYTHON_BIN not found. Install it (e.g. 'sudo port install python310') before deploying."
+    exit 1
+fi
 
 # 1. Pull latest code from GitHub
 echo "[1/4] Pulling latest changes from GitHub..."
