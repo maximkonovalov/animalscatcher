@@ -68,6 +68,15 @@ sudo codesign -f -s - "$PYTHON_BIN"
 echo "[5/6] Checking Python dependencies..."
 $PYTHON_BIN -m pip install -q -r "$PROJECT_DIR/requirements.txt"
 
+# PytorchWildlife's own dependencies (ultralytics, and yolov5 via sahi)
+# unconditionally require plain opencv-python, which installs alongside
+# the opencv-python-headless pinned above and silently wins the cv2
+# import (confirmed via cv2.__version__ -- `pip check` alone doesn't
+# catch this). Force headless back to being the one actually used.
+OPENCV_HEADLESS_PIN=$(grep -o 'opencv-python-headless==[0-9.]*' "$PROJECT_DIR/requirements.txt")
+$PYTHON_BIN -m pip uninstall -y -q opencv-python
+$PYTHON_BIN -m pip install -q --force-reinstall --no-deps "$OPENCV_HEADLESS_PIN"
+
 # 6. Restart the system service. Always a full unload/reload, never
 # `kickstart -k`: kickstart restarts the process using launchd's
 # already-cached job definition and does NOT re-read the plist from

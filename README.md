@@ -82,6 +82,22 @@ Then install the pinned project dependencies:
 
     pip install -r requirements.txt
 
+PytorchWildlife's own dependencies (`ultralytics`, and `yolov5` via
+`sahi`) unconditionally require plain `opencv-python`, which gets
+installed alongside the `opencv-python-headless` pinned above and
+silently wins the `cv2` import (confirmed via `cv2.__version__` --
+`pip check` alone won't catch this, since both packages install
+without error). Force `opencv-python-headless` back to being the one
+actually used:
+
+    pip uninstall -y opencv-python
+    pip install --force-reinstall --no-deps opencv-python-headless==4.10.0.84
+
+(`pip check` will then report sahi/ultralytics/yolov5 wanting
+`opencv-python` -- expected and harmless: headless provides everything
+those libraries actually call, just not GUI functions like
+`cv2.imshow`, which this project never uses either.)
+
 Run the Daemon:
 
     python3 ac.py

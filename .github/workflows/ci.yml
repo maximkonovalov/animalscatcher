@@ -52,5 +52,17 @@ jobs:
       - name: Install project + dev dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt
 
+      # PytorchWildlife's own dependencies (ultralytics, and yolov5 via
+      # sahi) unconditionally require plain opencv-python, which installs
+      # alongside the opencv-python-headless pinned above and silently
+      # wins the cv2 import (confirmed via cv2.__version__ -- `pip check`
+      # alone doesn't catch this). Force headless back to being the one
+      # actually used, so CI tests the same cv2 build production runs.
+      - name: Fix opencv-python/opencv-python-headless conflict
+        run: |
+          OPENCV_HEADLESS_PIN=$(grep -o 'opencv-python-headless==[0-9.]*' requirements.txt)
+          pip uninstall -y opencv-python
+          pip install --force-reinstall --no-deps "$OPENCV_HEADLESS_PIN"
+
       - name: Run tests
         run: pytest tests/ -v
