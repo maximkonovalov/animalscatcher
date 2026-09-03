@@ -18,7 +18,7 @@ from PytorchWildlife.models import detection as pw_detection
 from PytorchWildlife.models import classification as pw_classification
 
 # --- 0. VERSIONING ---
-VERSION = "0.6"
+VERSION = "0.7"
 
 # RTSP channel numbers to monitor (see camera_thread / STARTUP).
 CAMERA_CHANNELS = [4, 5, 6]
@@ -86,6 +86,14 @@ stats = {
 photo_executor = ThreadPoolExecutor(max_workers=4,
                                     thread_name_prefix="telegram-upload")
 
+def _redact(text):
+    """Strip the Telegram bot token out of a string before logging it --
+    request exceptions often stringify the full request URL, which
+    embeds the token."""
+    if TELEGRAM_TOKEN:
+        text = text.replace(TELEGRAM_TOKEN, "<redacted>")
+    return text
+
 def send_telegram_message(message):
     """Best-effort notification: never raises, so callers don't need to
     guard against a Telegram/network hiccup taking down their thread."""
@@ -94,7 +102,7 @@ def send_telegram_message(message):
     try:
         requests.post(url, data=payload, timeout=10)
     except Exception as e:
-        logger.warning(f"[TELEGRAM] Failed to send message: {e}")
+        logger.warning(f"[TELEGRAM] Failed to send message: {_redact(str(e))}")
 
 def send_telegram_photo(photo_path, caption):
     """Best-effort notification: never raises, same contract as
@@ -105,7 +113,8 @@ def send_telegram_photo(photo_path, caption):
         with open(photo_path, "rb") as photo:
             requests.post(url, data=payload, files={"photo": photo}, timeout=15)
     except Exception as e:
-        logger.warning(f"[TELEGRAM] Failed to send photo {photo_path}: {e}")
+        logger.warning(f"[TELEGRAM] Failed to send photo {photo_path}: "
+                       f"{_redact(str(e))}")
 
 # --- 4. ENGINE THREADS ---
 
