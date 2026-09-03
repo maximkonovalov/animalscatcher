@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
 
@@ -36,7 +36,7 @@ jobs:
       # was removed; upgrading setuptools to work around that instead
       # removes pkg_resources itself in newer releases). 3.10 is what's
       # actually been verified to work with this pin -- see README.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
 
