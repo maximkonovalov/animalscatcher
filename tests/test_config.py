@@ -30,12 +30,10 @@ static_tolerance = 0.03
 
 [PATHS]
 base_output_folder = /tmp/snaps
-log_file = /tmp/ac_log.txt
 
 [CLEANUP]
 max_age_days = 7
 cleanup_interval = 24
-max_log_size_mb = 5
 """
 
 
@@ -63,7 +61,6 @@ def test_valid_config_returns_expected_values(tmp_path):
     assert cfg["static_tolerance"] == 0.03
     assert cfg["max_age_days"] == 7
     assert cfg["cleanup_interval"] == 24
-    assert cfg["max_log_size_mb"] == 5
 
 
 def test_missing_file_raises_systemexit_with_path(tmp_path):

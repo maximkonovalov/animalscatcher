@@ -11,7 +11,6 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from logging.handlers import RotatingFileHandler
 from urllib.parse import quote
 
 import cv2
@@ -44,7 +43,6 @@ def load_config(path):
             'telegram_token': parser.get('TELEGRAM', 'token'),
             'telegram_chat_id': parser.get('TELEGRAM', 'chat_id'),
             'base_output_folder': parser.get('PATHS', 'base_output_folder'),
-            'log_file': parser.get('PATHS', 'log_file'),
             'thresholds': {
                 0: parser.getfloat('DETECTION', 'threshold_0'),
                 1: parser.getfloat('DETECTION', 'threshold_1'),
@@ -59,7 +57,6 @@ def load_config(path):
                                                 'static_tolerance'),
             'max_age_days': parser.getint('CLEANUP', 'max_age_days'),
             'cleanup_interval': parser.getint('CLEANUP', 'cleanup_interval'),
-            'max_log_size_mb': parser.getint('CLEANUP', 'max_log_size_mb'),
         }
     except (configparser.Error, ValueError) as e:
         raise SystemExit(f"Invalid or incomplete {path}: {e} "
@@ -79,7 +76,6 @@ TELEGRAM_CHAT_ID = _cfg['telegram_chat_id']
 
 # Path & Detection Settings
 BASE_OUTPUT_FOLDER = _cfg['base_output_folder']
-LOG_FILE = _cfg['log_file']
 THRESHOLDS = _cfg['thresholds']
 COOLDOWN = _cfg['cooldown']
 FRAME_INTERVAL = _cfg['frame_interval']
@@ -91,17 +87,19 @@ STATIC_TOLERANCE = _cfg['static_tolerance']
 # Cleanup Settings
 MAX_AGE_DAYS = _cfg['max_age_days']
 CLEANUP_INTERVAL = _cfg['cleanup_interval']
-MAX_LOG_MB = _cfg['max_log_size_mb']
 
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = ("rtsp_transport;tcp|"
                                                "stimeout;5000000")
 
 # --- 2. LOGGING ---
-# Thread-safe, self-rotating log (replaces manual open/append/truncate).
+# Writes to stdout rather than a separate log file: launchd already
+# captures stdout to its own file (StandardOutPath in com.user.ac.plist),
+# so a second, separately-rotated app log file was redundant. Rotation is
+# now whatever's applied to that file outside this process (e.g. macOS
+# newsyslog), not handled in-app.
 logger = logging.getLogger("animalcatcher")
 logger.setLevel(logging.INFO)
-_log_handler = RotatingFileHandler(LOG_FILE, maxBytes=MAX_LOG_MB * 1024 * 1024,
-                                   backupCount=1)
+_log_handler = logging.StreamHandler(sys.stdout)
 _log_handler.setFormatter(logging.Formatter("[%(asctime)s] %(message)s"))
 logger.addHandler(_log_handler)
 
@@ -151,8 +149,7 @@ def send_telegram_photo(photo_path, caption):
 # --- 4. ENGINE THREADS ---
 
 def cleanup_engine():
-    """Removes old snapshots every 24 hours. Log rotation is handled by
-    the RotatingFileHandler on `logger`."""
+    """Removes old snapshots every 24 hours."""
     while True:
         try:
             now = time.time()

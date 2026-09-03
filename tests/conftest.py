@@ -38,12 +38,10 @@ static_tolerance = 0.03
 
 [PATHS]
 base_output_folder = {_FIXTURE_DIR}/snaps
-log_file = {_FIXTURE_DIR}/ac_log.txt
 
 [CLEANUP]
 max_age_days = 7
 cleanup_interval = 24
-max_log_size_mb = 5
 """)
 
 os.environ.setdefault("AC_CONFIG_PATH", _FIXTURE_CFG)

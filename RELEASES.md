@@ -104,6 +104,46 @@ changes, not code). Partially resolved; see UNRESOLVED note below:
     known-working interim state; revisit and find the rest of the
     cause before restoring the privilege drop.
 
+Further small fixes and enhancements, same v0.8, no separate version
+bump:
+
+  - requests emitted a RequestsDependencyWarning on every import:
+    chardet is an unpinned transitive dependency (via PytorchWildlife)
+    that can resolve to a version newer than requests==2.32.3's
+    check_compatibility() accepts (>=3.0.2, <6.0.0 -- seen: 7.6.0, well
+    outside that range). Fixed by bumping requests to 2.34.2, whose
+    check_compatibility() widens the accepted range to <8.0.0 --
+    confirmed by reading requests' actual source at that tag, not
+    guessed. requests>=2.33 requires Python>=3.10, which this project
+    already targets exclusively, so this also meant dropping the
+    README's "Python 3.9-3.10" claim down to 3.10 only.
+  - Detections were only ever logged as part of a Telegram alert
+    (i.e. only once above both the class threshold and, for animals,
+    species_threshold); nothing recorded the model's own raw
+    confidence for every object it found. Added an INFO log line for
+    every raw detection, before threshold filtering, so a probability
+    is visible for every object the model reports -- not just ones
+    that ended up alerting.
+  - MegaDetectorV6's weights are fetched via the `wget` PyPI package,
+    which downloads into a `<prefix>.tmp` file in the working
+    directory and only renames it to the final name on success. Every
+    interrupted AI-model-load during the debugging above (crashes,
+    kills, restarts) left one of these orphaned in
+    /Users/maxim/nvr/ (WorkingDirectory in com.user.ac.plist) forever,
+    since nothing else cleans them up. Added a startup step in
+    ai_engine() that removes any matching MDV6*.tmp before loading the
+    model.
+  - Replaced the separate, self-rotating app log file
+    (RotatingFileHandler + [PATHS] log_file + [CLEANUP]
+    max_log_size_mb) with logging straight to stdout, which launchd
+    already captures to its own file (StandardOutPath). Went from
+    three separate output files (stdout, stderr, app log) to two.
+    Trade-off: log growth is no longer bounded/rotated in-app: the
+    RotatingFileHandler's 1-backup size cap is gone, and nothing
+    currently rotates the stdout file it's replaced by either -- worth
+    revisiting (e.g. macOS newsyslog) if that file grows unbounded in
+    practice.
+
 v0.7 - 2026-09-02
 ------------------
 

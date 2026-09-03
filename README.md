@@ -18,8 +18,8 @@ Two-Stage AI Pipeline:
 * Smart Alerts: Sends labeled snapshots to a Telegram bot with configurable
 cooldowns to prevent notification flooding.
 
-* Auto-Maintenance: Integrated cleanup engine to manage disk space and
-log file sizes automatically.
+* Auto-Maintenance: Integrated cleanup engine to purge old snapshots
+and manage disk space automatically.
 
 * Persistent Monitoring: Multi-threaded architecture with auto-reconnect
 logic for unstable RTSP streams.
@@ -49,9 +49,9 @@ following sections are defined:
 | :---      | :--- |        :--- |
 | CAMERA    | user, pass, ip, port | RTSP credentials and network address. |
 | TELEGRAM  | token, chat_id | Bot API token and target chat ID for alerts. |
-| PATHS     | base_output_folder, log_file | Storage locations for snapshots and system logs. |
+| PATHS     | base_output_folder | Storage location for snapshots. |
 | DETECTION | threshold_0-2, cooldown, frame_interval, summary_interval, species_threshold, static_tolerance | Confidence thresholds and alert frequency. |
-| CLEANUP | max_age_days, cleanup_interval, max_log_size_mb | Retention policies for data management. |
+| CLEANUP | max_age_days, cleanup_interval | Retention policy for snapshots. |
 
 `ac.cfg` holds RTSP and Telegram credentials in plaintext and must never be
 committed (it's covered by `.gitignore`). Since the daemon typically runs as
@@ -81,8 +81,11 @@ Run the Daemon:
 
     python3 ac.py
 
-Monitor: Check the log file defined in your config or your Telegram
-channel for the "The animal catcher is online" startup message.
+Monitor: Check stdout (or wherever your process supervisor captures it
+-- e.g. StandardOutPath in com.user.ac.plist) or your Telegram channel
+for the "The animal catcher is online" startup message. All of this
+daemon's own logging goes to stdout; nothing is written to a separate
+app log file.
 
 ## Project Structure
 

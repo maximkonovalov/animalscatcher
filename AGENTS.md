@@ -12,7 +12,7 @@ The system consists of four primary agent types running in parallel:
 | **Camera Agent** | Maintains RTSP connection and samples frames. | Continuous |
 | **AI Agent** | Performs detection and species classification. | Queue-driven |
 | **Summary Agent** | Compiles stats and sends periodic reports. | Configurable |
-| **Cleanup Agent** | Manages storage and log rotation. | Configurable |
+| **Cleanup Agent** | Purges old snapshots to manage storage. | Configurable |
 
 ---
 
@@ -47,10 +47,8 @@ provides a heartbeat to ensure the system is active.
 ### Cleanup Agent (`cleanup_engine`)
 A maintenance worker that keeps the host system stable.
 * **Storage:** Deletes snapshots older than `max_age_days`.
-* **Logs:** Rotation is handled separately by a `RotatingFileHandler`
-  on the shared `logger`, which rolls over automatically once the log
-  exceeds `max_log_size_mb` — the Cleanup Agent itself only manages
-  snapshots.
+* **Logs:** Not its concern — the daemon logs to stdout rather than a
+  file it owns, so there's no app log file for it to rotate.
 
 ---
 

@@ -25,14 +25,11 @@ static_tolerance = 0.03
 
 [PATHS]
 base_output_folder = /home/ac/snaps
-log_file = /home/ac/ac_log.txt
 
 [CLEANUP]
-# Number of days to keep snapshots and log entries
+# Number of days to keep snapshots
 max_age_days = 7
 # How often to check for old files (in hours)
 cleanup_interval = 24
-# Maximum log file size in Megabytes before it resets
-max_log_size_mb = 5
 
 # EOF
