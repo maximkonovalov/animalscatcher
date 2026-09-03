@@ -91,12 +91,14 @@ Note: On the first execution, the system will download approximately
 
 ## Development
 
-Install the pinned dev tooling and lint before committing:
+Install the pinned dev tooling, lint, and run the tests before committing:
 
     pip install -r requirements-dev.txt
     ruff check ac.py
+    pip install -r requirements.txt   # tests import ac.py directly
+    pytest tests/
 
-A GitHub Actions workflow (`.github/workflows/lint.yml`) runs the same
-check, plus a syntax check, on every push and pull request.
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs the same
+lint/syntax checks and the test suite on every push and pull request.
 
 ### EOF

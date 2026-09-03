@@ -9,7 +9,7 @@ updates:
     commit-message:
       prefix: "deps"
 
-  # Actions used in .github/workflows/lint.yml
+  # Actions used in .github/workflows/ci.yml
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

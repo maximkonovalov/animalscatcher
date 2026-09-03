@@ -24,42 +24,72 @@ VERSION = "0.7"
 CAMERA_CHANNELS = [4, 5, 6]
 
 # --- 1. LOAD CONFIGURATION ---
-config = configparser.ConfigParser()
-config_path = os.path.join(os.path.dirname(__file__), 'ac.cfg')
-if not config.read(config_path):
-    raise SystemExit(f"Config file not found or unreadable: {config_path}")
+def load_config(path):
+    """Parse and validate ac.cfg, returning a dict of typed settings.
+    Raises SystemExit with a friendly message if the file is missing,
+    unreadable, or a required key is missing/invalid -- covers both
+    configparser errors (missing section/key) and getfloat/getint
+    ValueErrors (a key present but not a valid number)."""
+    parser = configparser.ConfigParser()
+    if not parser.read(path):
+        raise SystemExit(f"Config file not found or unreadable: {path}")
+    try:
+        return {
+            'user': parser.get('CAMERA', 'user'),
+            'pass': parser.get('CAMERA', 'pass'),
+            'ip': parser.get('CAMERA', 'ip'),
+            'port': parser.get('CAMERA', 'port'),
+            'telegram_token': parser.get('TELEGRAM', 'token'),
+            'telegram_chat_id': parser.get('TELEGRAM', 'chat_id'),
+            'base_output_folder': parser.get('PATHS', 'base_output_folder'),
+            'log_file': parser.get('PATHS', 'log_file'),
+            'thresholds': {
+                0: parser.getfloat('DETECTION', 'threshold_0'),
+                1: parser.getfloat('DETECTION', 'threshold_1'),
+                2: parser.getfloat('DETECTION', 'threshold_2'),
+            },
+            'cooldown': parser.getint('DETECTION', 'cooldown'),
+            'frame_interval': parser.getint('DETECTION', 'frame_interval'),
+            'summary_interval': parser.getint('DETECTION', 'summary_interval'),
+            'species_threshold': parser.getfloat('DETECTION',
+                                                  'species_threshold'),
+            'static_tolerance': parser.getfloat('DETECTION',
+                                                'static_tolerance'),
+            'max_age_days': parser.getint('CLEANUP', 'max_age_days'),
+            'cleanup_interval': parser.getint('CLEANUP', 'cleanup_interval'),
+            'max_log_size_mb': parser.getint('CLEANUP', 'max_log_size_mb'),
+        }
+    except (configparser.Error, ValueError) as e:
+        raise SystemExit(f"Invalid or incomplete {path}: {e} "
+                         f"(see ac.cfg.example for the required keys)")
 
-try:
-    # Camera & Telegram Settings
-    USER = config.get('CAMERA', 'user')
-    PASS = config.get('CAMERA', 'pass')
-    IP = config.get('CAMERA', 'ip')
-    PORT = config.get('CAMERA', 'port')
-    TELEGRAM_TOKEN = config.get('TELEGRAM', 'token')
-    TELEGRAM_CHAT_ID = config.get('TELEGRAM', 'chat_id')
+config_path = os.environ.get('AC_CONFIG_PATH') or os.path.join(
+    os.path.dirname(__file__), 'ac.cfg')
+_cfg = load_config(config_path)
 
-    # Path & Detection Settings
-    BASE_OUTPUT_FOLDER = config.get('PATHS', 'base_output_folder')
-    LOG_FILE = config.get('PATHS', 'log_file')
-    THRESHOLDS = {
-        0: config.getfloat('DETECTION', 'threshold_0'),
-        1: config.getfloat('DETECTION', 'threshold_1'),
-        2: config.getfloat('DETECTION', 'threshold_2')
-    }
-    COOLDOWN = config.getint('DETECTION', 'cooldown')
-    FRAME_INTERVAL = config.getint('DETECTION', 'frame_interval')
-    SUMMARY_INTERVAL = config.getint('DETECTION', 'summary_interval')
-    SPECIES_THRESHOLD = config.getfloat('DETECTION', 'species_threshold')
-    # Tolerance for "Static" detection, as a fraction of frame width/height.
-    STATIC_TOLERANCE = config.getfloat('DETECTION', 'static_tolerance')
+# Camera & Telegram Settings
+USER = _cfg['user']
+PASS = _cfg['pass']
+IP = _cfg['ip']
+PORT = _cfg['port']
+TELEGRAM_TOKEN = _cfg['telegram_token']
+TELEGRAM_CHAT_ID = _cfg['telegram_chat_id']
 
-    # Cleanup Settings
-    MAX_AGE_DAYS = config.getint('CLEANUP', 'max_age_days')
-    CLEANUP_INTERVAL = config.getint('CLEANUP', 'cleanup_interval')
-    MAX_LOG_MB = config.getint('CLEANUP', 'max_log_size_mb')
-except configparser.Error as e:
-    raise SystemExit(f"Invalid or incomplete {config_path}: {e} "
-                     f"(see ac.cfg.example for the required keys)")
+# Path & Detection Settings
+BASE_OUTPUT_FOLDER = _cfg['base_output_folder']
+LOG_FILE = _cfg['log_file']
+THRESHOLDS = _cfg['thresholds']
+COOLDOWN = _cfg['cooldown']
+FRAME_INTERVAL = _cfg['frame_interval']
+SUMMARY_INTERVAL = _cfg['summary_interval']
+SPECIES_THRESHOLD = _cfg['species_threshold']
+# Tolerance for "Static" detection, as a fraction of frame width/height.
+STATIC_TOLERANCE = _cfg['static_tolerance']
+
+# Cleanup Settings
+MAX_AGE_DAYS = _cfg['max_age_days']
+CLEANUP_INTERVAL = _cfg['cleanup_interval']
+MAX_LOG_MB = _cfg['max_log_size_mb']
 
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = ("rtsp_transport;tcp|"
                                                "stimeout;5000000")
