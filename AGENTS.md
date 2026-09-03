@@ -26,13 +26,19 @@ Each camera defined in the startup sequence spawns its own dedicated thread.
 
 ### AI Inference Agent (`ai_engine`)
 The core "brain" of the system. It monitors the `detection_queue` and
-processes frames using a First-In-First-Out (FIFO) logic.
+processes frames using a First-In-First-Out (FIFO) logic; each frame is
+handed to `_process_frame()`, which does the actual detection,
+classification, and alerting.
 1. **Detection:** Uses **MegaDetectorV6** for Animals, People, or Vehicles.
-2. **Classification:** If an animal is detected, the agent crops the area
-   and passes it to **DeepFaune** for species identification.
+2. **Classification:** If an animal is detected above `species_threshold`
+   (config-driven, `ac.cfg` `[DETECTION]`), the agent crops the area and
+   passes it to **DeepFaune** for species identification.
 3. **Labeling:** Annotates the frame with type, species, and confidence.
-4. **Alerting:** If motion is confirmed (past `cooldown`), it triggers
-   an asynchronous Telegram upload.
+4. **Alerting:** If motion is confirmed (past `cooldown`) and the
+   detection isn't static (within `static_tolerance`, also config-driven),
+   it triggers an asynchronous Telegram upload.
+5. **Isolation:** A per-frame error is caught, logged, and skipped rather
+   than killing the agent — one bad frame doesn't take down detection.
 
 ### Summary Agent (`summary_engine`)
 A background observer that tracks stream health and detection counts. It
@@ -41,7 +47,10 @@ provides a heartbeat to ensure the system is active.
 ### Cleanup Agent (`cleanup_engine`)
 A maintenance worker that keeps the host system stable.
 * **Storage:** Deletes snapshots older than `max_age_days`.
-* **Logs:** Truncates `ac.log` if it exceeds `max_log_size_mb`.
+* **Logs:** Rotation is handled separately by a `RotatingFileHandler`
+  on the shared `logger`, which rolls over automatically once the log
+  exceeds `max_log_size_mb` — the Cleanup Agent itself only manages
+  snapshots.
 
 ---
 
@@ -56,9 +65,13 @@ A maintenance worker that keeps the host system stable.
 ---
 
 ## 4. Design Philosophy
-* **Asynchronous Notifications:** Telegram photos are sent in "fire-and-forget"
-  threads to prevent blocking the AI pipeline.
+* **Asynchronous Notifications:** Telegram photos are sent via a bounded
+  `ThreadPoolExecutor` (4 workers) to prevent blocking the AI pipeline
+  without spawning an unbounded thread per detection.
 * **Thread Safety:** A `stats_lock` protects the global `stats` dictionary.
+* **Resilience:** Each agent's main loop is wrapped in `try/except`, so an
+  unexpected error is logged and the loop continues rather than silently
+  killing that agent while the rest of the process keeps running.
 * **Style:** Minimalist, efficient, and robust against network interruptions.
 
 ---
