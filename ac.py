@@ -18,7 +18,7 @@ from PytorchWildlife.models import detection as pw_detection
 from PytorchWildlife.models import classification as pw_classification
 
 # --- 0. VERSIONING ---
-VERSION = "0.7"
+VERSION = "0.8"
 
 # RTSP channel numbers to monitor (see camera_thread / STARTUP).
 CAMERA_CHANNELS = [4, 5, 6]
@@ -309,7 +309,12 @@ def ai_engine():
     try:
         detector = pw_detection.MegaDetectorV6(version="MDV6-yolov9-c",
                                                device="cpu", pretrained=True)
-        classifier = pw_classification.DeepfauneClassifier(device="cpu")
+        # DFNE ("Deepfaune-New-England", a USGS-retrained variant of the
+        # French Deepfaune model): unlike DeepfauneClassifier, its species
+        # set is North American (bobcat, coyote, black bear, gray/red fox,
+        # raccoon, skunk, white-tailed deer, wild turkey, etc.) -- matching
+        # this project's actual use case.
+        classifier = pw_classification.DFNE(device="cpu")
     except Exception as e:
         logger.critical("[SYSTEM] Failed to load AI models:", exc_info=True)
         send_telegram_message(f"Animal Catcher FAILED to start: "

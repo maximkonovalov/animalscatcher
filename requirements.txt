@@ -1,19 +1,48 @@
 # Pinned for reproducibility: PytorchWildlife's classifier output schema
 # has changed across releases (see the label/prediction/y_pred fallback
 # in ac.py), so an unpinned upgrade can silently break species labeling.
+# The full set below (numpy, setuptools included) was verified together
+# as one `pip install -r requirements.txt`, from a clean venv, with no
+# conflicting/overriding installs needed afterward.
 #
 # opencv-python-headless (not opencv-python): ac.py never uses any GUI
 # feature (no imshow/waitKey), and the non-headless build pulls in
 # libGL/GTK/X11 system libraries that a headless server or minimal
 # Linux CI image won't have installed.
-#
-# NOTE: PytorchWildlife pulls in plain opencv-python transitively (via
-# supervision), which shares the `cv2` import path with this package --
-# pip installs both, and whichever's files land on disk last silently
-# wins. A plain `pip install -r requirements.txt` does NOT guarantee
-# this one wins; deploy.sh and ci.yml both force it with a follow-up
-# `pip install --force-reinstall --no-deps opencv-python-headless==...`
-# after the main install.
 opencv-python-headless==4.10.0.84
-PytorchWildlife==1.1.1
+
+# PytorchWildlife's detector/classifier constructor APIs differ between
+# releases (the version string MegaDetectorV6 accepts, and whether
+# DFNE/DeepfauneClassifier even exist) -- see ac.py's MegaDetectorV6 and
+# DFNE calls, which are written against this exact version.
+PytorchWildlife==1.3.0
+
 requests==2.32.3
+
+# numpy<2: torch==2.2.2 (pulled in by PytorchWildlife) is compiled
+# against the numpy 1.x ABI. A newer opencv-python/opencv-python-headless
+# (>=5, pulled in transitively) requires numpy>=2, which silently breaks
+# torch.from_numpy() at runtime (RuntimeError: Numpy is not available)
+# if left unpinned -- pinning opencv-python-headless above avoids that
+# newer opencv in the first place, but pin numpy explicitly too so the
+# resolver can't drift here again.
+numpy==1.26.4
+
+# setuptools==59.5.0: yolov5 (a transitive dependency via PytorchWildlife)
+# imports pkg_resources at module level. Modern setuptools (~80+) removes
+# pkg_resources entirely; this older setuptools still has it. (On Python
+# 3.12, this same setuptools version instead breaks a different way --
+# see README System Requirements for why this project targets Python
+# 3.9/3.10.)
+setuptools==59.5.0
+
+# PytorchWildlife's own package metadata doesn't declare these, but its
+# top-level __init__.py unconditionally imports a bioacoustics submodule
+# that needs them -- so `import PytorchWildlife` fails without them even
+# though ac.py never uses audio features. llvmlite/numba are pinned to
+# versions with working prebuilt wheels (an unpinned/latest llvmlite
+# fails to build from source on at least one verified platform).
+soundfile==0.14.0
+librosa==0.11.0
+numba==0.60.0
+llvmlite==0.43.0

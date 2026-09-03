@@ -1,6 +1,73 @@
 Release History
 ===============
 
+v0.8 - 2026-09-03
+------------------
+
+Fixes the AI models entirely failing to load, discovered while
+debugging a production deployment on a fresh machine. Traced through
+three unrelated layers before finding the real cause.
+
+Fixed:
+  - MegaDetectorV6 crashed with "local variable 'url' referenced
+    before assignment" on every startup. Root cause: ac.py's
+    version="MDV6-yolov9-c" argument was correct for the API of newer
+    PytorchWildlife releases, but the project was pinned to 1.1.1
+    (for classifier schema stability, back in v0.5), whose
+    MegaDetectorV6 only accepts version='yolov9c' or 'rtdetrl' --
+    anything else silently falls through without setting a required
+    local variable instead of raising. The pin itself was the bug.
+  - Species classification (Stage 2) had likely never worked at all
+    under the 1.1.1 pin: pw_classification.DeepfauneClassifier doesn't
+    exist in that release (confirmed by reading the installed
+    package's source directly). Since both model loads happen in the
+    same try block, this was masked by the MegaDetectorV6 crash above
+    -- fixing that alone would have just swapped one startup crash for
+    another.
+  - logger.critical() on a model-load failure only logged str(e), not
+    a traceback, which is what made the "referenced before assignment"
+    error hard to place -- added exc_info=True so future failures show
+    exactly which file/line raised.
+
+Changed:
+  - Bumped PytorchWildlife 1.1.1 -> 1.3.0. This is also what actually
+    fixes the two bugs above: 1.3.0's MegaDetectorV6 accepts the
+    version strings ac.py already passes, and it adds DFNE
+    ("Deepfaune-New-England", a USGS retrain of Deepfaune) as a real,
+    available classifier.
+  - Switched the classifier from DeepfauneClassifier to DFNE. This is
+    also a correctness fix, not just an availability one: the French
+    Deepfaune model's species list has no coyote or bobcat at all --
+    it's trained on European fauna (wolf, lynx, chamois, wild boar,
+    etc.). DFNE's species list (Bobcat, Coyote, Black Bear, Gray Fox,
+    Red Fox, Raccoon, Skunk, White-tailed Deer, Wild Turkey, ...)
+    actually matches the species this project's README has always
+    claimed to identify. No changes needed to ac.py's existing
+    label/prediction/y_pred and confidence/y_conf fallback parsing --
+    DFNE's real output already uses the keys that logic expects.
+  - requirements.txt gained several new pins that PytorchWildlife 1.3.0
+    needs but doesn't declare or that changed transitively: numpy==1.26.4
+    (a newer opencv-python/opencv-python-headless pulled in
+    transitively requires numpy>=2, which silently breaks
+    torch.from_numpy() -- RuntimeError: Numpy is not available -- since
+    torch==2.2.2 is compiled against the numpy 1.x ABI), setuptools==
+    59.5.0 (same pkg_resources/pkgutil.ImpImporter story as before),
+    and soundfile/librosa/numba/llvmlite (PytorchWildlife 1.3.0's
+    top-level __init__.py unconditionally imports a new bioacoustics
+    submodule that needs these, even though this project never touches
+    audio -- an upstream packaging gap, not something optional).
+  - With the full pin set above in one requirements.txt, a plain
+    `pip install -r requirements.txt` now resolves correctly in one
+    shot -- removed the separate `pip install --force-reinstall
+    --no-deps opencv-python-headless==...` step from ci.yml and
+    deploy.sh that v0.7 needed as a workaround.
+
+Verified end-to-end, three times, from a completely clean venv (CPU
+torch -> requirements.txt -> pytest): both MegaDetectorV6 and DFNE
+actually load and run real inference (not mocked) with no errors, and
+the DFNE output was confirmed to already match ac.py's existing result
+parsing.
+
 v0.7 - 2026-09-02
 ------------------
 

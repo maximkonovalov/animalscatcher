@@ -11,8 +11,9 @@ Two-Stage AI Pipeline:
 
 * Stage 1: MegaDetectorV6 (YOLOv9-C) for high-speed object detection.
 
-* Stage 2: DeepfauneClassifier for species identification (Coyotes,
-        Bobcats, etc.).
+* Stage 2: DFNE ("Deepfaune-New-England", a USGS retrain of the French
+        Deepfaune model on northeastern US species) for species
+        identification (Coyotes, Bobcats, Black Bear, etc.).
 
 * Smart Alerts: Sends labeled snapshots to a Telegram bot with configurable
 cooldowns to prevent notification flooding.
@@ -25,12 +26,12 @@ logic for unstable RTSP streams.
 
 ## System Requirements
 
-Environment: Python 3.9-3.10 (verified). PytorchWildlife==1.1.1's
-yolov5 dependency is incompatible with Python 3.12 -- it imports
-pkg_resources in a way that breaks on 3.12 either direction:
-pkgutil.ImpImporter (which old setuptools' pkg_resources needs) was
-removed in 3.12, but upgrading setuptools to fix that instead removes
-pkg_resources itself in newer releases. Untested on 3.11.
+Environment: Python 3.9-3.10 (verified). PytorchWildlife's yolov5
+dependency is incompatible with Python 3.12 -- it imports pkg_resources
+in a way that breaks on 3.12 either direction: pkgutil.ImpImporter
+(which old setuptools' pkg_resources needs) was removed in 3.12, but
+upgrading setuptools to fix that instead removes pkg_resources itself
+in newer releases. Untested on 3.11.
 
 Dependencies: opencv-python-headless, PytorchWildlife, requests,
 configparser.
@@ -104,14 +105,6 @@ Install the pinned dev tooling, lint, and run the tests before committing
     ruff check ac.py
     pip install -r requirements.txt   # tests import ac.py directly
     pytest tests/
-
-On Linux, `pip install -r requirements.txt` can end up with plain
-`opencv-python` (pulled in transitively by PytorchWildlife) winning
-over the pinned `opencv-python-headless` -- see the NOTE in
-requirements.txt. If `import cv2` or the tests fail with a missing
-libGL/GTK error, force the headless build to win:
-
-    pip install --force-reinstall --no-deps opencv-python-headless==4.10.0.84
 
 A GitHub Actions workflow (`.github/workflows/ci.yml`) runs the same
 lint/syntax checks and the test suite (on Python 3.10) on every push
