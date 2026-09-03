@@ -4,7 +4,7 @@ Release History
 v0.10 - 2026-09-03
 ------------------
 
-Documentation polish, no functional code changes:
+Documentation and naming polish:
 
   - Removed debug/rtsp_probe.py and its throwaway plists now that the
     UserName maxim privilege drop (v0.9) has been confirmed working
@@ -29,6 +29,10 @@ Documentation polish, no functional code changes:
     path and username (/Users/maxim/nvr, /opt/local/bin/python3.10,
     UserName maxim) specific to the machine this project was developed
     against, and need editing before use elsewhere.
+  - The Telegram startup/failure messages and the startup print said
+    "Animal Catcher" (singular), not matching the project's actual
+    name (animalscatcher / "Animals Catcher"). Standardized on the
+    plural everywhere, including the README's opening line.
 
 v0.9 - 2026-09-03
 ------------------
