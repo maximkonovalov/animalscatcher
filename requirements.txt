@@ -50,6 +50,6 @@ setuptools==59.5.0
 # versions with working prebuilt wheels (an unpinned/latest llvmlite
 # fails to build from source on at least one verified platform).
 soundfile==0.14.0
-librosa==0.11.0
+librosa==1.0.0
 numba==0.60.0
 llvmlite==0.43.0
