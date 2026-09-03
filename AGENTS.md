@@ -12,7 +12,7 @@ The system consists of four primary agent types running in parallel:
 | **Camera Agent** | Maintains RTSP connection and samples frames. | Continuous |
 | **AI Agent** | Performs detection and species classification. | Queue-driven |
 | **Summary Agent** | Compiles stats and sends periodic reports. | Configurable |
-| **Cleanup Agent** | Manages storage and log rotation. | 24 Hours |
+| **Cleanup Agent** | Manages storage and log rotation. | Configurable |
 
 ---
 
@@ -72,6 +72,12 @@ A maintenance worker that keeps the host system stable.
 * **Resilience:** Each agent's main loop is wrapped in `try/except`, so an
   unexpected error is logged and the loop continues rather than silently
   killing that agent while the rest of the process keeps running.
+* **Config Validation:** `load_config()` fails fast with a friendly message
+  (missing file, missing key, or an invalid value) instead of letting a
+  bad `ac.cfg` surface as a raw traceback with no log record.
+* **Graceful Shutdown:** `SIGTERM`/`SIGINT` are caught to log the shutdown
+  and drain `photo_executor` before exiting, rather than being killed
+  mid-write.
 * **Style:** Minimalist, efficient, and robust against network interruptions.
 
 ---

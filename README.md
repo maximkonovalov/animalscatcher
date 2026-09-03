@@ -49,7 +49,7 @@ following sections are defined:
 | TELEGRAM  | token, chat_id | Bot API token and target chat ID for alerts. |
 | PATHS     | base_output_folder, log_file | Storage locations for snapshots and system logs. |
 | DETECTION | threshold_0-2, cooldown, frame_interval, summary_interval, species_threshold, static_tolerance | Confidence thresholds and alert frequency. |
-| CLEANUP | max_age_days, max_log_size_mb | Retention policies for data management. |
+| CLEANUP | max_age_days, cleanup_interval, max_log_size_mb | Retention policies for data management. |
 
 `ac.cfg` holds RTSP and Telegram credentials in plaintext and must never be
 committed (it's covered by `.gitignore`). Since the daemon typically runs as
@@ -97,14 +97,24 @@ Note: On the first execution, the system will download approximately
 
 ## Development
 
-Install the pinned dev tooling, lint, and run the tests before committing:
+Install the pinned dev tooling, lint, and run the tests before committing
+(use a Python 3.9/3.10 interpreter -- see System Requirements above):
 
     pip install -r requirements-dev.txt
     ruff check ac.py
     pip install -r requirements.txt   # tests import ac.py directly
     pytest tests/
 
+On Linux, `pip install -r requirements.txt` can end up with plain
+`opencv-python` (pulled in transitively by PytorchWildlife) winning
+over the pinned `opencv-python-headless` -- see the NOTE in
+requirements.txt. If `import cv2` or the tests fail with a missing
+libGL/GTK error, force the headless build to win:
+
+    pip install --force-reinstall --no-deps opencv-python-headless==4.10.0.84
+
 A GitHub Actions workflow (`.github/workflows/ci.yml`) runs the same
-lint/syntax checks and the test suite on every push and pull request.
+lint/syntax checks and the test suite (on Python 3.10) on every push
+and pull request.
 
 ### EOF

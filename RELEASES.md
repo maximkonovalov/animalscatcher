@@ -1,6 +1,48 @@
 Release History
 ===============
 
+v0.7 (unreleased, no tag) - 2026-09-02
+----------------------------------------
+
+Security fix, dependency automation, and a first test suite. Not
+tagged as a release per the maintainer's request, but VERSION in
+ac.py reflects it.
+
+Fixed:
+  - Telegram bot token could leak into ac_log.txt: requests
+    exceptions (ConnectionError, Timeout) often stringify the full
+    request URL, which embeds the token. Added _redact() and applied
+    it to every logged Telegram exception.
+
+Added:
+  - .github/dependabot.yml: weekly pip and GitHub Actions update PRs.
+  - tests/ with pytest: config validation (valid config, missing
+    file/key/section, invalid numeric value), the token-redaction
+    helper, and mocked-detector coverage of the debounce/static-filter/
+    cooldown alert logic plus the stats[obj_name] KeyError regression.
+  - Refactored config loading into load_config(path), a pure function
+    returning a typed dict, with an AC_CONFIG_PATH env override so
+    tests can point ac.py at a fixture config. Also fixed a gap where
+    an invalid numeric value (e.g. cooldown = not-a-number) escaped as
+    an uncaught ValueError instead of the friendly SystemExit that
+    missing keys already got.
+  - .github/workflows/ci.yml (renamed from lint.yml): added a `test`
+    job running the suite alongside the existing lint job.
+  - requirements-dev.txt: pytest==8.4.2.
+
+Changed:
+  - Switched opencv-python to opencv-python-headless: ac.py never uses
+    a GUI feature, and the non-headless build needs libGL/GTK/X11
+    system libraries a headless server or CI image won't have.
+    PytorchWildlife still pulls in plain opencv-python transitively,
+    so deploy.sh and ci.yml both force-reinstall the headless build
+    after the main install to make sure it wins the shared `cv2` path.
+  - CI (and the README's stated System Requirements) target Python
+    3.10, not 3.12: PytorchWildlife==1.1.1's yolov5 dependency needs
+    pkg_resources in a way that has no compatible setuptools version
+    on 3.12 (old setuptools' pkgutil.ImpImporter was removed; newer
+    setuptools instead removes pkg_resources itself).
+
 v0.6 - 2026-09-02
 ------------------
 
