@@ -4,16 +4,17 @@
 <dict>
     <key>Label</key>
     <string>com.user.ac</string>
-    <!-- No UserName (runs as root), TEMPORARY, revisit. Dropping
-         privileges to maxim via UserName still breaks this daemon's
-         outbound connectivity even after ad-hoc code-signing
-         /opt/local/bin/python3.10 (deploy.sh does this on every deploy
-         regardless, since it's a real prerequisite either way). Signing
-         fixed one confirmed cause (an unsigned interpreter dropped to a
-         session-less, non-root UID) but evidently isn't sufficient by
-         itself, so root is the known-working interim state while this
-         gets debugged further. See RELEASES.md v0.8 for the full
-         investigation so far. -->
+    <!-- UserName maxim: retrying the privilege drop. A standalone
+         debug/rtsp_probe.py comparison (root vs maxim, same signed
+         python3.10, real camera URL) came back identical for both
+         identities: TCP connect and RTSP frame read both succeeded
+         under maxim, unlike the earlier "No route to host" symptom.
+         Revert to no UserName (runs as root) if this recurs, which
+         happened once already after an earlier signing fix that also
+         looked clean at first, for reasons still not fully understood.
+         See RELEASES.md v0.8/v0.9 for the full investigation so far. -->
+    <key>UserName</key>
+    <string>maxim</string>
     <key>ProgramArguments</key>
     <array>
         <string>/opt/local/bin/python3.10</string>
