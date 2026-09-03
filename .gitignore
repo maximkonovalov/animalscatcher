@@ -5,6 +5,10 @@ ac.cfg
 *.log
 logs/
 
+# PID file (written at startup so an external tool, e.g. newsyslog, can
+# signal this process to reopen its log files after rotating them)
+*.pid
+
 # Snapshots / detection output
 snaps/
 

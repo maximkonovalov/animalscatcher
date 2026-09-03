@@ -102,6 +102,12 @@ logger.setLevel(logging.INFO)
 _log_handler = logging.StreamHandler(sys.stdout)
 _log_handler.setFormatter(logging.Formatter("[%(asctime)s] %(message)s"))
 logger.addHandler(_log_handler)
+# PytorchWildlife pulls in ultralytics, which installs its own
+# StreamHandler(stderr) on the ROOT logger at import time. Without this,
+# every message logged here also propagates up and gets duplicated,
+# unformatted, into stderr -- found by inspecting logging.getLogger()
+# .handlers after `import ac`, not by guessing.
+logger.propagate = False
 
 # --- 3. SHARED DATA & LOCKS ---
 detection_queue = queue.Queue(maxsize=15)
@@ -365,10 +371,50 @@ def _handle_shutdown(signum, frame):
     photo_executor.shutdown(wait=False, cancel_futures=True)
     sys.exit(0)
 
+def _handle_log_reopen(signum, frame):
+    """SIGUSR1: reopen stdout/stderr in place, for use after an external
+    tool (e.g. newsyslog) rotates the files launchd's StandardOutPath/
+    StandardErrorPath redirect to. Without this, this process's inherited
+    fds would keep appending to the now-renamed, archived file forever --
+    neither launchd nor this process otherwise notices the rename, and
+    nothing reopens StandardOutPath short of a full restart. Requires
+    AC_STDOUT_LOG/AC_STDERR_LOG (set in com.user.ac.plist) to know which
+    paths to reopen; a plain `python3 ac.py` run without them is a no-op
+    here."""
+    sys.stdout.flush()
+    sys.stderr.flush()
+    for env_var, fd in (('AC_STDOUT_LOG', 1), ('AC_STDERR_LOG', 2)):
+        path = os.environ.get(env_var)
+        if not path:
+            continue
+        try:
+            new_fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+            os.dup2(new_fd, fd)
+            os.close(new_fd)
+        except OSError as e:
+            logger.warning(f"[SYSTEM] Failed to reopen fd {fd} ({path}) "
+                           f"after log rotation: {e}")
+    logger.info(f"[SYSTEM] Reopened stdout/stderr after external log "
+               f"rotation (signal {signum}).")
+
+def _write_pid_file():
+    """Lets an external tool (e.g. newsyslog, via its pid_file/
+    signal_number config fields) find this process to signal after
+    rotating its log files. Best-effort: a daemon that can't write this
+    still runs fine, it just can't be told to reopen its logs without a
+    full restart."""
+    try:
+        with open(os.path.join(os.getcwd(), 'ac.pid'), 'w') as f:
+            f.write(str(os.getpid()))
+    except OSError as e:
+        logger.warning(f"[SYSTEM] Could not write PID file: {e}")
+
 if __name__ == "__main__":
     print(f"Starting Animals Catcher v{VERSION}...")
     signal.signal(signal.SIGTERM, _handle_shutdown)
     signal.signal(signal.SIGINT, _handle_shutdown)
+    signal.signal(signal.SIGUSR1, _handle_log_reopen)
+    _write_pid_file()
     for t in [ai_engine, summary_engine, cleanup_engine]:
         threading.Thread(target=t, name=t.__name__, daemon=True).start()
     for n in CAMERA_CHANNELS:

@@ -101,6 +101,20 @@ for the "The Animals Catcher is online" startup message. All of this
 daemon's own logging goes to stdout; nothing is written to a separate
 app log file.
 
+Log Rotation: since the daemon logs to stdout/stderr rather than a
+file it manages itself, this project doesn't rotate its own logs --
+`com.user.ac.newsyslog.conf` (installed to `/etc/newsyslog.d/` by
+deploy.sh) hands that job to macOS's own newsyslog. Renaming a log
+file out from under a running process doesn't do anything useful on
+its own though: launchd only opens StandardOutPath/StandardErrorPath
+once, at process start, so this daemon's inherited fds would just keep
+appending to the newly-archived file forever. newsyslog's pid_file and
+signal_number config fields close that gap: after rotating, it sends
+SIGUSR1 to the PID in `ac.pid` (written at startup for this purpose),
+which `ac.py`'s own signal handler uses to reopen fresh file
+descriptors at the same two paths (via `AC_STDOUT_LOG`/`AC_STDERR_LOG`,
+set in com.user.ac.plist) -- no daemon restart needed.
+
 ## Project Structure
 
 ai_engine: The brain of the system; handles detection and classification.
