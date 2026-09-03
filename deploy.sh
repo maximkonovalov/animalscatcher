@@ -68,14 +68,15 @@ sudo codesign -f -s - "$PYTHON_BIN"
 echo "[5/6] Checking Python dependencies..."
 $PYTHON_BIN -m pip install -q -r "$PROJECT_DIR/requirements.txt"
 
-# 6. Restart the system service
+# 6. Restart the system service. Always a full unload/reload, never
+# `kickstart -k`: kickstart restarts the process using launchd's
+# already-cached job definition and does NOT re-read the plist from
+# disk, so any plist change (new EnvironmentVariables, WorkingDirectory,
+# etc.) would silently never take effect on a running job -- confirmed
+# the hard way when AC_STDOUT_LOG/AC_STDERR_LOG (needed for the SIGUSR1
+# log-reopen handler) went unnoticed until a manual bootout+bootstrap.
 echo "[6/6] Restarting Animals Catcher Daemon..."
-# Attempt to restart the existing service first
-if sudo launchctl list | grep -q "com.user.ac"; then
-    sudo launchctl kickstart -k system/com.user.ac
-else
-    # Only bootstrap if it's not loaded at all
-    sudo launchctl bootstrap system "$PLIST_DEST"
-fi
+sudo launchctl bootout system/com.user.ac 2>/dev/null
+sudo launchctl bootstrap system "$PLIST_DEST"
 
 echo "--- Deployment Successful ---"
