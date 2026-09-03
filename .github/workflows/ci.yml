@@ -12,7 +12,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.10"
 
       - name: Install dev dependencies
         run: pip install -r requirements-dev.txt
@@ -28,9 +28,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # PytorchWildlife==1.1.1's yolov5 dependency imports pkg_resources
+      # in a way that's incompatible with Python 3.12 (pkgutil.ImpImporter
+      # was removed; upgrading setuptools to work around that instead
+      # removes pkg_resources itself in newer releases). 3.10 is what's
+      # actually been verified to work with this pin -- see README.
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.10"
 
       # Linux defaults to torch's CUDA build (multi-GB); this project
       # only runs on CPU, so install the CPU-only wheel first (same
