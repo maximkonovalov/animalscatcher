@@ -80,7 +80,7 @@ sudo launchctl bootout system/com.user.ac 2>/dev/null
 # bootout is asynchronous; bootstrapping again immediately can hit a
 # generic "Input/output error" while launchd is still tearing the old
 # job down (seen firsthand debugging this).
-sleep 1
+sleep 3
 sudo launchctl bootstrap system "$PLIST_DEST"
 
 echo "--- Deployment Successful ---"
