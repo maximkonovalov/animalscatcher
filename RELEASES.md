@@ -1,6 +1,28 @@
 Release History
 ===============
 
+v0.10 - 2026-09-03
+------------------
+
+Documentation polish, no functional code changes:
+
+  - Removed debug/rtsp_probe.py and its throwaway plists now that the
+    UserName maxim privilege drop (v0.9) has been confirmed working
+    end-to-end, including through a full machine reboot.
+  - AGENTS.md still described the classifier as plain "DeepFaune" --
+    the same species-list mixup (no coyote/bobcat) v0.8 specifically
+    fixed everywhere else. Corrected to DFNE, and documented two
+    behaviors added in v0.9 that AGENTS.md hadn't caught up on yet:
+    per-detection confidence logging and the stale partial-download
+    cleanup at ai_engine() startup.
+  - README now credits Claude (Anthropic), Claude Code, and the Claude
+    Sonnet 5 model used to develop this project, and links
+    MegaDetectorV6 and DFNE to their actual source projects
+    (https://github.com/agentmorris/MegaDetector and
+    https://code.usgs.gov/vtcfwru/deepfaune-new-england -- the latter
+    pulled directly from PytorchWildlife 1.3.0's own DFNE.py docstring
+    rather than guessed).
+
 v0.9 - 2026-09-03
 ------------------
 
