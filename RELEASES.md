@@ -1,12 +1,10 @@
 Release History
 ===============
 
-v0.7 (unreleased, no tag) - 2026-09-02
-----------------------------------------
+v0.7 - 2026-09-02
+------------------
 
-Security fix, dependency automation, and a first test suite. Not
-tagged as a release per the maintainer's request, but VERSION in
-ac.py reflects it.
+Security fix, dependency automation, and a first test suite.
 
 Fixed:
   - Telegram bot token could leak into ac_log.txt: requests
