@@ -5,6 +5,9 @@ people, and vehicles in real-time.
 By utilizing a two-stage AI pipeline, it first detects broad categories
 and then performs taxonomic classification to identify specific animal species.
 
+Developed with [Claude](https://claude.com), Anthropic's AI assistant,
+using Claude Code and the Claude Sonnet 5 model.
+
 ## Core Features
 
 Two-Stage AI Pipeline:
