@@ -1,6 +1,43 @@
 Release History
 ===============
 
+v0.6 - 2026-09-02
+------------------
+
+Fixes from an independent multi-angle code review of the v0.5 changes.
+
+Fixed:
+  - Config validation now covers a missing key, not just a missing
+    file: all config reads are wrapped in try/except configparser.Error,
+    raising a friendly message instead of an unhandled traceback with
+    no log record.
+  - Restored the "never raises" contract on the Telegram helper
+    functions (except Exception, not the narrower RequestException) --
+    the unprotected startup announcement in ai_engine could otherwise
+    be killed by any non-network exception, permanently halting all
+    detection with no restart.
+  - Snapshot filenames now include the object class, fixing a
+    same-second collision where two different classes detected in one
+    frame could overwrite each other's saved photo before the async
+    upload read it.
+  - Narrowed camera_thread's stats_lock scope to just the dict writes,
+    no longer held across the blocking reconnect (release/sleep/
+    VideoCapture), which could stall every other camera thread and
+    summary_engine.
+  - Fixed a latent KeyError in stats[obj_name] for any detector class
+    outside {Animal, Person, Vehicle}.
+  - Applied the same not-None fallback already used for species
+    confidence to the species label, removing the matching latent bug.
+
+Changed:
+  - photo_executor is now explicitly shut down on SIGTERM/SIGINT
+    instead of relying on the implicit ThreadPoolExecutor atexit join.
+  - Added a 1s backoff to ai_engine's error path, matching the
+    throttle camera_thread already has, to avoid log spam on a
+    persistent error.
+  - deploy.sh now installs from the pinned requirements.txt instead of
+    a separate unpinned package list.
+
 v0.5 - 2026-09-02
 ------------------
 

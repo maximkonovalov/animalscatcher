@@ -25,9 +25,9 @@ else
     echo "[2/4] Launcher (.plist) is already up to date."
 fi
 
-# 3. Ensure Python dependencies are installed
+# 3. Ensure Python dependencies are installed (pinned versions)
 echo "[3/4] Checking Python dependencies..."
-$PYTHON_BIN -m pip install -q opencv-python requests configparser pytorchwildlife
+$PYTHON_BIN -m pip install -q -r "$PROJECT_DIR/requirements.txt"
 
 # 4. Restart the system service
 echo "[4/4] Restarting LTS-Mini Daemon..."

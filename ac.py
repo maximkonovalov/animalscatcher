@@ -18,7 +18,7 @@ from PytorchWildlife.models import detection as pw_detection
 from PytorchWildlife.models import classification as pw_classification
 
 # --- 0. VERSIONING ---
-VERSION = "0.5"
+VERSION = "0.6"
 
 # RTSP channel numbers to monitor (see camera_thread / STARTUP).
 CAMERA_CHANNELS = [4, 5, 6]
@@ -29,33 +29,37 @@ config_path = os.path.join(os.path.dirname(__file__), 'ac.cfg')
 if not config.read(config_path):
     raise SystemExit(f"Config file not found or unreadable: {config_path}")
 
-# Camera & Telegram Settings
-USER = config.get('CAMERA', 'user')
-PASS = config.get('CAMERA', 'pass')
-IP = config.get('CAMERA', 'ip')
-PORT = config.get('CAMERA', 'port')
-TELEGRAM_TOKEN = config.get('TELEGRAM', 'token')
-TELEGRAM_CHAT_ID = config.get('TELEGRAM', 'chat_id')
+try:
+    # Camera & Telegram Settings
+    USER = config.get('CAMERA', 'user')
+    PASS = config.get('CAMERA', 'pass')
+    IP = config.get('CAMERA', 'ip')
+    PORT = config.get('CAMERA', 'port')
+    TELEGRAM_TOKEN = config.get('TELEGRAM', 'token')
+    TELEGRAM_CHAT_ID = config.get('TELEGRAM', 'chat_id')
 
-# Path & Detection Settings
-BASE_OUTPUT_FOLDER = config.get('PATHS', 'base_output_folder')
-LOG_FILE = config.get('PATHS', 'log_file')
-THRESHOLDS = {
-    0: config.getfloat('DETECTION', 'threshold_0'),
-    1: config.getfloat('DETECTION', 'threshold_1'),
-    2: config.getfloat('DETECTION', 'threshold_2')
-}
-COOLDOWN = config.getint('DETECTION', 'cooldown')
-FRAME_INTERVAL = config.getint('DETECTION', 'frame_interval')
-SUMMARY_INTERVAL = config.getint('DETECTION', 'summary_interval')
-SPECIES_THRESHOLD = config.getfloat('DETECTION', 'species_threshold')
-# Tolerance for "Static" object detection, as a fraction of frame width/height.
-STATIC_TOLERANCE = config.getfloat('DETECTION', 'static_tolerance')
+    # Path & Detection Settings
+    BASE_OUTPUT_FOLDER = config.get('PATHS', 'base_output_folder')
+    LOG_FILE = config.get('PATHS', 'log_file')
+    THRESHOLDS = {
+        0: config.getfloat('DETECTION', 'threshold_0'),
+        1: config.getfloat('DETECTION', 'threshold_1'),
+        2: config.getfloat('DETECTION', 'threshold_2')
+    }
+    COOLDOWN = config.getint('DETECTION', 'cooldown')
+    FRAME_INTERVAL = config.getint('DETECTION', 'frame_interval')
+    SUMMARY_INTERVAL = config.getint('DETECTION', 'summary_interval')
+    SPECIES_THRESHOLD = config.getfloat('DETECTION', 'species_threshold')
+    # Tolerance for "Static" detection, as a fraction of frame width/height.
+    STATIC_TOLERANCE = config.getfloat('DETECTION', 'static_tolerance')
 
-# Cleanup Settings
-MAX_AGE_DAYS = config.getint('CLEANUP', 'max_age_days')
-CLEANUP_INTERVAL = config.getint('CLEANUP', 'cleanup_interval')
-MAX_LOG_MB = config.getint('CLEANUP', 'max_log_size_mb')
+    # Cleanup Settings
+    MAX_AGE_DAYS = config.getint('CLEANUP', 'max_age_days')
+    CLEANUP_INTERVAL = config.getint('CLEANUP', 'cleanup_interval')
+    MAX_LOG_MB = config.getint('CLEANUP', 'max_log_size_mb')
+except configparser.Error as e:
+    raise SystemExit(f"Invalid or incomplete {config_path}: {e} "
+                     f"(see ac.cfg.example for the required keys)")
 
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = ("rtsp_transport;tcp|"
                                                "stimeout;5000000")
@@ -83,20 +87,24 @@ photo_executor = ThreadPoolExecutor(max_workers=4,
                                     thread_name_prefix="telegram-upload")
 
 def send_telegram_message(message):
+    """Best-effort notification: never raises, so callers don't need to
+    guard against a Telegram/network hiccup taking down their thread."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
     try:
         requests.post(url, data=payload, timeout=10)
-    except requests.RequestException as e:
+    except Exception as e:
         logger.warning(f"[TELEGRAM] Failed to send message: {e}")
 
 def send_telegram_photo(photo_path, caption):
+    """Best-effort notification: never raises, same contract as
+    send_telegram_message."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
     try:
         with open(photo_path, "rb") as photo:
             requests.post(url, data=payload, files={"photo": photo}, timeout=15)
-    except (requests.RequestException, OSError) as e:
+    except Exception as e:
         logger.warning(f"[TELEGRAM] Failed to send photo {photo_path}: {e}")
 
 # --- 4. ENGINE THREADS ---
@@ -165,16 +173,17 @@ def camera_thread(cam_num):
     while True:
         try:
             success, frame = cap.read()
-            with stats_lock:
-                if not success or frame is None:
+            if not success or frame is None:
+                with stats_lock:
                     stats["streams"][cam_id] = {"status": "OFFLINE",
                                                 "res": "N/A"}
-                    cap.release()
-                    time.sleep(5)
-                    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
-                    continue
-                w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                cap.release()
+                time.sleep(5)
+                cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+                continue
+            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            with stats_lock:
                 stats["streams"][cam_id] = {"status": "ONLINE",
                                             "res": f"{w}x{h}"}
             if f_idx % FRAME_INTERVAL == 0:
@@ -213,9 +222,10 @@ def _process_frame(cam_id, frame, detector, classifier, names, colors,
                         try:
                             s_res = classifier.single_image_classification(crop)
                             res = s_res[0] if isinstance(s_res, list) else s_res
-                            s_label = (res.get('label') or
-                                       res.get('prediction') or
-                                       res.get('y_pred') or "Unknown")
+                            s_label = next((v for v in
+                                (res.get('label'), res.get('prediction'),
+                                 res.get('y_pred'))
+                                if v is not None), "Unknown")
                             s_conf = next((v for v in
                                 (res.get('confidence'), res.get('y_conf'))
                                 if v is not None), 0.0)
@@ -240,9 +250,9 @@ def _process_frame(cam_id, frame, detector, classifier, names, colors,
                             is_static = True
                     if not is_static:
                         with stats_lock:
-                            stats[obj_name] += 1
+                            stats[obj_name] = stats.get(obj_name, 0) + 1
                         last_box[d_key] = (x1, y1, x2, y2)
-                        fname = f"{cam_id}_{int(time.time())}.jpg"
+                        fname = f"{cam_id}_{obj_name}_{int(time.time())}.jpg"
                         fpath = os.path.join(BASE_OUTPUT_FOLDER,
                                              cam_id, fname)
                         cv2.imwrite(fpath, frame)
@@ -283,12 +293,17 @@ def ai_engine():
         except Exception as e:
             logger.error(f"[SYSTEM] ai_engine failed processing frame "
                         f"from {cam_id}: {e}")
+            time.sleep(1)
         finally:
             detection_queue.task_done()
 
 # --- 5. STARTUP ---
 def _handle_shutdown(signum, frame):
     logger.info(f"[SYSTEM] Received signal {signum}, shutting down.")
+    # Drop any not-yet-started uploads so shutdown isn't held up by the
+    # whole queue; an upload already in flight can still delay exit by up
+    # to its own request timeout.
+    photo_executor.shutdown(wait=False, cancel_futures=True)
     sys.exit(0)
 
 if __name__ == "__main__":
