@@ -41,5 +41,15 @@ jobs:
       - name: Install project + dev dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt
 
+      # PytorchWildlife pulls in plain opencv-python transitively (via
+      # supervision), which shares the `cv2` import path with
+      # opencv-python-headless -- pip installs both, and whichever's
+      # files land on disk last silently wins. Force headless to win:
+      # the non-headless build needs libGL/GTK/X11 system libraries
+      # this runner doesn't have, so if it wins, `import cv2` (and
+      # every test) fails.
+      - name: Force opencv-python-headless to win the cv2 conflict
+        run: pip install --force-reinstall --no-deps opencv-python-headless==4.10.0.84
+
       - name: Run tests
         run: pytest tests/ -v

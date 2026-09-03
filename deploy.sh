@@ -28,6 +28,11 @@ fi
 # 3. Ensure Python dependencies are installed (pinned versions)
 echo "[3/4] Checking Python dependencies..."
 $PYTHON_BIN -m pip install -q -r "$PROJECT_DIR/requirements.txt"
+# PytorchWildlife pulls in plain opencv-python transitively, which
+# shares the `cv2` import path with opencv-python-headless -- whichever
+# installs last silently wins. Force headless to win (see
+# requirements.txt for why headless is the one we want).
+$PYTHON_BIN -m pip install -q --force-reinstall --no-deps opencv-python-headless==4.10.0.84
 
 # 4. Restart the system service
 echo "[4/4] Restarting LTS-Mini Daemon..."
