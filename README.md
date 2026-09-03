@@ -86,6 +86,15 @@ Run the Daemon:
 
     python3 ac.py
 
+Optional macOS Deployment: `com.user.ac.plist` and `deploy.sh`
+automate running this as a launchd LaunchDaemon on the machine this
+project was developed against. Both hardcode paths and a username
+specific to that deployment (`/Users/maxim/nvr` as the project
+directory, `/opt/local/bin/python3.10` as the MacPorts interpreter,
+and `UserName maxim` as the account the daemon drops root privileges
+to) -- edit these to match your own machine and account before using
+them; they aren't meant to work as-is elsewhere.
+
 Monitor: Check stdout (or wherever your process supervisor captures it
 -- e.g. StandardOutPath in com.user.ac.plist) or your Telegram channel
 for the "The animal catcher is online" startup message. All of this
