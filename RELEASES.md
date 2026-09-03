@@ -1,6 +1,53 @@
 Release History
 ===============
 
+v0.11 - 2026-09-03
+------------------
+
+Log rotation, since v0.10 removed the daemon's own file-based logging
+in favor of writing straight to stdout/stderr: nothing was rotating
+those files any more.
+
+Added:
+  - A two-fold rotation approach: newsyslog does the actual rotation
+    (rename, archive, gzip, keep 5 generations) via the new
+    com.user.ac.newsyslog.conf, installed to /etc/newsyslog.d/ by
+    deploy.sh. Right after rotating, newsyslog signals ac.py (SIGUSR1,
+    via its pid_file/signal_number config fields and the new
+    _write_pid_file()) so it can reopen fresh file descriptors at the
+    same two paths (AC_STDOUT_LOG/AC_STDERR_LOG, set in
+    com.user.ac.plist) -- no daemon restart needed, unlike a plain
+    newsyslog rotation on its own, which would otherwise leave this
+    process's inherited fds appending to the archived file forever
+    (launchd only opens StandardOutPath/StandardErrorPath once, at
+    process start).
+  - tests/test_logging_setup.py covers the parts of this that are
+    safely unit-testable (propagation, PID file, the no-env-vars
+    no-op). The actual dup2() reopen mechanics need a real subprocess
+    to test without hijacking pytest's own stdout/stderr, so that was
+    verified manually instead -- both locally (a subprocess that
+    rotates its own log and confirms SIGUSR1 redirects it) and
+    end-to-end on the real deployment (newsyslog -F, confirmed the
+    live file starts growing again with no daemon restart).
+
+Fixed:
+  - A real, pre-existing bug found while building this: logger.propagate
+    defaulted to True, and PytorchWildlife pulls in ultralytics, which
+    installs its own StreamHandler(stderr) on the root logger at
+    import time -- every message logged here has been getting
+    duplicated, unformatted, into stderr this whole time as a result.
+  - deploy.sh used `launchctl kickstart -k` to restart the daemon,
+    which reuses launchd's already-cached job definition and never
+    re-reads the plist from disk -- so the new AC_STDOUT_LOG/
+    AC_STDERR_LOG env vars silently never reached the running process
+    across a plain `./deploy.sh`, only via a manual bootout+bootstrap.
+    Any future plist change (new env vars, WorkingDirectory, etc.)
+    would have hit the same silent staleness; deploy.sh now always
+    does a full unload/reload. bootout is asynchronous, so a
+    bootstrap run immediately after it can itself fail with a generic
+    "Input/output error" while launchd is still tearing the old job
+    down -- deploy.sh now waits 1s between the two.
+
 v0.10 - 2026-09-03
 ------------------
 
