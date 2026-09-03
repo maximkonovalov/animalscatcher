@@ -12,9 +12,11 @@ using Claude Code and the Claude Sonnet 5 model.
 
 Two-Stage AI Pipeline:
 
-* Stage 1: MegaDetectorV6 (YOLOv9-C) for high-speed object detection.
+* Stage 1: [MegaDetectorV6](https://github.com/agentmorris/MegaDetector)
+        (YOLOv9-C) for high-speed object detection.
 
-* Stage 2: DFNE ("Deepfaune-New-England", a USGS retrain of the French
+* Stage 2: [DFNE](https://code.usgs.gov/vtcfwru/deepfaune-new-england)
+        ("Deepfaune-New-England", a USGS retrain of the French
         Deepfaune model on northeastern US species) for species
         identification (Coyotes, Bobcats, Black Bear, etc.).
 
