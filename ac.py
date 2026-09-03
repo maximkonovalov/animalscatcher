@@ -20,6 +20,9 @@ from PytorchWildlife.models import classification as pw_classification
 # --- 0. VERSIONING ---
 VERSION = "0.5"
 
+# RTSP channel numbers to monitor (see camera_thread / STARTUP).
+CAMERA_CHANNELS = [4, 5, 6]
+
 # --- 1. LOAD CONFIGURATION ---
 config = configparser.ConfigParser()
 config_path = os.path.join(os.path.dirname(__file__), 'ac.cfg')
@@ -138,8 +141,8 @@ def summary_engine():
                 s_info = "\n".join(s_list)
                 report = (f"--- NVR SUMMARY ---\n"
                           f"Version: {VERSION}\n"
-                          f"Range: {stats['start_time'].strftime('%H:%M')} - "
-                          f"{now.strftime('%H:%M')}\n\n"
+                          f"Range: {stats['start_time'].strftime('%d/%m/%Y %H:%M')} - "
+                          f"{now.strftime('%d/%m/%Y %H:%M')}\n\n"
                           f"STREAMS:\n{s_info}\n\n"
                           f"DETECTIONS:\n- Animals: {stats['Animal']}\n"
                           f"- People: {stats['Person']}\n"
@@ -268,7 +271,10 @@ def ai_engine():
     last_box = {}
     names = {0: "Animal", 1: "Person", 2: "Vehicle"}
     colors = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255)}
-    send_telegram_message(f"The animal catcher is online, version {VERSION}")
+    send_telegram_message(
+        f"The animal catcher is online, version {VERSION}\n"
+        f"Started: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+        f"Streams: {len(CAMERA_CHANNELS)}")
     while True:
         cam_id, frame = detection_queue.get()
         try:
@@ -291,7 +297,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, _handle_shutdown)
     for t in [ai_engine, summary_engine, cleanup_engine]:
         threading.Thread(target=t, name=t.__name__, daemon=True).start()
-    for n in [4, 5, 6]:
+    for n in CAMERA_CHANNELS:
         threading.Thread(target=camera_thread, args=(n,), name=f"cam0{n}",
                          daemon=True).start()
         time.sleep(2)
