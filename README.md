@@ -1,4 +1,4 @@
-Animal Catcher is a lightweight, AI-powered surveillance tool.
+Animals Catcher is a lightweight, AI-powered surveillance tool.
 It processes RTSP camera streams to detect and identify wildlife,
 people, and vehicles in real-time.
 
@@ -97,7 +97,7 @@ them; they aren't meant to work as-is elsewhere.
 
 Monitor: Check stdout (or wherever your process supervisor captures it
 -- e.g. StandardOutPath in com.user.ac.plist) or your Telegram channel
-for the "The animal catcher is online" startup message. All of this
+for the "The Animals Catcher is online" startup message. All of this
 daemon's own logging goes to stdout; nothing is written to a separate
 app log file.
 

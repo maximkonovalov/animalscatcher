@@ -332,7 +332,7 @@ def ai_engine():
         classifier = pw_classification.DFNE(device="cpu")
     except Exception as e:
         logger.critical("[SYSTEM] Failed to load AI models:", exc_info=True)
-        send_telegram_message(f"Animal Catcher FAILED to start: "
+        send_telegram_message(f"Animals Catcher FAILED to start: "
                               f"could not load AI models ({e})")
         os._exit(1)
     last_det = {}
@@ -341,7 +341,7 @@ def ai_engine():
     names = {0: "Animal", 1: "Person", 2: "Vehicle"}
     colors = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255)}
     send_telegram_message(
-        f"The animal catcher is online, version {VERSION}\n"
+        f"The Animals Catcher is online, version {VERSION}\n"
         f"Started: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
         f"Streams: {len(CAMERA_CHANNELS)}")
     while True:
@@ -366,7 +366,7 @@ def _handle_shutdown(signum, frame):
     sys.exit(0)
 
 if __name__ == "__main__":
-    print(f"Starting Animal Catcher v{VERSION}...")
+    print(f"Starting Animals Catcher v{VERSION}...")
     signal.signal(signal.SIGTERM, _handle_shutdown)
     signal.signal(signal.SIGINT, _handle_shutdown)
     for t in [ai_engine, summary_engine, cleanup_engine]:
