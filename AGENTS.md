@@ -87,6 +87,11 @@ A maintenance worker that keeps the host system stable.
 * **Graceful Shutdown:** `SIGTERM`/`SIGINT` are caught to log the shutdown
   and drain `photo_executor` before exiting, rather than being killed
   mid-write.
+* **Log Reopening:** `SIGUSR1` is caught (`_handle_log_reopen`) to
+  `dup2()` fresh file descriptors onto stdout/stderr after an external
+  tool (newsyslog) rotates the files launchd redirects them to --
+  reopening in place rather than restarting the process. See README's
+  Log Rotation section for the full mechanism.
 * **Style:** Minimalist, efficient, and robust against network interruptions.
 
 ---
