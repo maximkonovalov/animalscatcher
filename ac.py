@@ -2,6 +2,7 @@
 
 import configparser
 import datetime
+import glob
 import logging
 import os
 import queue
@@ -306,8 +307,23 @@ def _process_frame(cam_id, frame, detector, classifier, names, colors,
     for c in [0, 1, 2]:
         motion_val[(cam_id, c)] = seen[c]
 
+def _clean_stale_model_downloads():
+    """MegaDetectorV6's weights are fetched via the `wget` package, which
+    downloads into a `<prefix>.tmp` file in the current working directory
+    and only renames it to the final filename on success. A crash or
+    restart mid-download (e.g. during an earlier AI-model-load failure)
+    leaves that file behind forever, since nothing else ever cleans it up."""
+    for path in glob.glob("MDV6*.tmp"):
+        try:
+            os.remove(path)
+            logger.info(f"[SYSTEM] Removed stale partial download: {path}")
+        except OSError as e:
+            logger.warning(f"[SYSTEM] Could not remove stale partial "
+                           f"download {path}: {e}")
+
 def ai_engine():
     """Processes frames: Detects objects and filters static false positives."""
+    _clean_stale_model_downloads()
     try:
         detector = pw_detection.MegaDetectorV6(version="MDV6-yolov9-c",
                                                device="cpu", pretrained=True)
