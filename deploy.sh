@@ -23,10 +23,14 @@ if [ ! -x "$PYTHON_BIN" ]; then
     exit 1
 fi
 
-# 1. Pull latest code from GitHub
+# 1. Pull latest code from GitHub. Plain `git pull` (no explicit
+# branch) rather than `git pull origin main`: uses whatever branch is
+# currently checked out and its tracked upstream, so this works
+# correctly on a feature branch too instead of always pulling main
+# into whatever's checked out.
 echo "[1/6] Pulling latest changes from GitHub..."
 cd "$PROJECT_DIR" || { echo "Error: Project directory not found"; exit 1; }
-git pull origin main
+git pull
 
 # 2. Sync the .plist to the system folder if changed
 if ! diff -q "$PLIST_SOURCE" "$PLIST_DEST" > /dev/null 2>&1; then
