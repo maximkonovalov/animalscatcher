@@ -25,14 +25,21 @@ Each camera defined in the startup sequence spawns its own dedicated thread.
   is sent to the shared `detection_queue`.
 
 ### AI Inference Agent (`ai_engine`)
-The core "brain" of the system. It monitors the `detection_queue` and
-processes frames using a First-In-First-Out (FIFO) logic; each frame is
-handed to `_process_frame()`, which does the actual detection,
-classification, and alerting.
-1. **Detection:** Uses **MegaDetectorV6** for Animals, People, or Vehicles.
+The core "brain" of the system. Before loading any model, it clears out
+any `MDV6*.tmp` partial download left behind in the working directory by
+a previous, interrupted weights download (MegaDetectorV6 fetches its
+weights via the `wget` package, which doesn't clean these up itself).
+It then monitors the `detection_queue` and processes frames using a
+First-In-First-Out (FIFO) logic; each frame is handed to
+`_process_frame()`, which does the actual detection, classification,
+and alerting.
+1. **Detection:** Uses **MegaDetectorV6** for Animals, People, or
+   Vehicles. Every raw detection is logged with its confidence (before
+   threshold filtering), independent of whether it ends up alerting.
 2. **Classification:** If an animal is detected above `species_threshold`
    (config-driven, `ac.cfg` `[DETECTION]`), the agent crops the area and
-   passes it to **DeepFaune** for species identification.
+   passes it to **DFNE** ("Deepfaune-New-England", a USGS retrain of
+   Deepfaune on North American species) for species identification.
 3. **Labeling:** Annotates the frame with type, species, and confidence.
 4. **Alerting:** If motion is confirmed (past `cooldown`) and the
    detection isn't static (within `static_tolerance`, also config-driven),
