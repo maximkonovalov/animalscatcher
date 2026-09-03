@@ -26,12 +26,13 @@ logic for unstable RTSP streams.
 
 ## System Requirements
 
-Environment: Python 3.9-3.10 (verified). PytorchWildlife's yolov5
+Environment: Python 3.10 (verified). PytorchWildlife's yolov5
 dependency is incompatible with Python 3.12 -- it imports pkg_resources
 in a way that breaks on 3.12 either direction: pkgutil.ImpImporter
 (which old setuptools' pkg_resources needs) was removed in 3.12, but
 upgrading setuptools to fix that instead removes pkg_resources itself
-in newer releases. Untested on 3.11.
+in newer releases. requests>=2.33 (see requirements.txt) also requires
+Python>=3.10. Untested on 3.11.
 
 Dependencies: opencv-python-headless, PytorchWildlife, requests,
 configparser.
@@ -99,7 +100,7 @@ Note: On the first execution, the system will download approximately
 ## Development
 
 Install the pinned dev tooling, lint, and run the tests before committing
-(use a Python 3.9/3.10 interpreter -- see System Requirements above):
+(use a Python 3.10 interpreter -- see System Requirements above):
 
     pip install -r requirements-dev.txt
     ruff check ac.py

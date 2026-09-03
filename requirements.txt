@@ -17,19 +17,14 @@ opencv-python-headless==4.10.0.84
 # DFNE calls, which are written against this exact version.
 PytorchWildlife==1.3.0
 
-requests==2.32.3
-
-# chardet: not used directly, but pulled in transitively (by PytorchWildlife's
-# own requests dependency) and left unpinned it can resolve to a version
-# newer than what requests==2.32.3 checks for (its check_compatibility()
-# hard-codes an accepted range of >=3.0.2, <6.0.0). Outside that range,
-# requests emits a RequestsDependencyWarning on every import -- harmless,
-# but pin to a known-compatible version instead of just living with the
-# warning. (Bumping requests instead of pinning chardet down would also
-# clear the warning -- 2.34.2 widens the accepted range to <8.0.0 -- but
-# requests>=2.33 requires Python>=3.10, dropping this project's Python 3.9
-# support; pinning chardet keeps that support intact.)
-chardet==5.2.0
+# >=2.33 (not just >=2.32.3): older requests' check_compatibility() only
+# accepts chardet <6.0.0, and chardet is an unpinned transitive dependency
+# (via PytorchWildlife) that resolves to newer versions on some machines
+# (seen: 7.6.0) -- outside that range it's a RequestsDependencyWarning on
+# every import. 2.34.2 widens the accepted range to <8.0.0. This also
+# requires Python>=3.10, which is fine: 3.10 is already this project's
+# only verified/targeted interpreter (see README System Requirements).
+requests==2.34.2
 
 # numpy<2: torch==2.2.2 (pulled in by PytorchWildlife) is compiled
 # against the numpy 1.x ABI. A newer opencv-python/opencv-python-headless
@@ -45,7 +40,7 @@ numpy==1.26.4
 # pkg_resources entirely; this older setuptools still has it. (On Python
 # 3.12, this same setuptools version instead breaks a different way --
 # see README System Requirements for why this project targets Python
-# 3.9/3.10.)
+# 3.10.)
 setuptools==59.5.0
 
 # PytorchWildlife's own package metadata doesn't declare these, but its
