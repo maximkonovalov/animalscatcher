@@ -248,9 +248,10 @@ def _process_frame(cam_id, frame, detector, classifier, names, colors,
         h, w, _ = frame.shape
         for i in range(len(det.confidence)):
             conf, cls = float(det.confidence[i]), int(det.class_id[i])
+            obj_name = names.get(cls, "Object")
+            logger.info(f"[DETECT] {obj_name} conf={conf:.2f} on {cam_id}")
             if conf > THRESHOLDS.get(cls, 0.5):
                 seen[cls] = True
-                obj_name = names.get(cls, "Object")
                 label = f"{obj_name} ({conf:.2f})"
                 box = det.xyxy[i]
                 x1, y1, x2, y2 = (int(box[0]), int(box[1]),
