@@ -51,20 +51,25 @@ def probe_tcp(ip, port, timeout=5):
              f"{time.time() - start:.2f}s ({e})", flush=True)
 
 
-def probe_rtsp(ip, port, user, password, timeout_us=8_000_000):
-    # Same FFmpeg options ac.py sets, so this reproduces its actual
-    # capture behavior rather than cv2's untuned defaults.
+def probe_rtsp(ip, port, user, password, cam_num, timeout_us=8_000_000):
+    # Same FFmpeg options, URL shape (path included -- a bare
+    # rtsp://user:pass@ip:port with no path 404s regardless of identity,
+    # which isn't the privilege-drop behavior this is trying to isolate),
+    # quoting, and cv2.CAP_FFMPEG apiPreference that camera_thread() in
+    # ac.py actually uses, so this reproduces its real capture behavior.
     os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
         f"rtsp_transport;tcp|stimeout;{timeout_us}")
-    url = f"rtsp://{quote(user)}:{quote(password)}@{ip}:{port}"
+    user_q = quote(user, safe='')
+    password_q = quote(password, safe='')
+    url = f"rtsp://{user_q}:{password_q}@{ip}:{port}/Streaming/Channels/{cam_num}02"
     start = time.time()
-    cap = cv2.VideoCapture(url)
+    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
     opened = cap.isOpened()
     frame_ok = False
     if opened:
         frame_ok = cap.read()[0]
     cap.release()
-    print(f"[RTSP] cv2.VideoCapture -> opened={opened} "
+    print(f"[RTSP] cv2.VideoCapture(channel {cam_num}) -> opened={opened} "
          f"frame_read={frame_ok} in {time.time() - start:.2f}s", flush=True)
 
 
@@ -72,10 +77,11 @@ def main():
     config_path = (sys.argv[1] if len(sys.argv) > 1
                    else os.environ.get('AC_CONFIG_PATH',
                                        '/Users/maxim/nvr/ac.cfg'))
+    cam_num = int(sys.argv[2]) if len(sys.argv) > 2 else 4
     report_identity()
     ip, port, user, password = load_camera_config(config_path)
     probe_tcp(ip, port)
-    probe_rtsp(ip, port, user, password)
+    probe_rtsp(ip, port, user, password, cam_num)
 
 
 if __name__ == "__main__":
