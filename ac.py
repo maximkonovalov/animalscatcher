@@ -311,7 +311,7 @@ def ai_engine():
                                                device="cpu", pretrained=True)
         classifier = pw_classification.DeepfauneClassifier(device="cpu")
     except Exception as e:
-        logger.critical(f"[SYSTEM] Failed to load AI models: {e}")
+        logger.critical("[SYSTEM] Failed to load AI models:", exc_info=True)
         send_telegram_message(f"Animal Catcher FAILED to start: "
                               f"could not load AI models ({e})")
         os._exit(1)
