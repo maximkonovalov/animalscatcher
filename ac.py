@@ -35,7 +35,7 @@ def load_config(path):
     if not parser.read(path):
         raise SystemExit(f"Config file not found or unreadable: {path}")
     try:
-        return {
+        cfg = {
             'user': parser.get('CAMERA', 'user'),
             'pass': parser.get('CAMERA', 'pass'),
             'ip': parser.get('CAMERA', 'ip'),
@@ -55,9 +55,29 @@ def load_config(path):
                                                   'species_threshold'),
             'static_tolerance': parser.getfloat('DETECTION',
                                                 'static_tolerance'),
+            # Optional, defaulted rather than required: existing ac.cfg
+            # files predate these keys, and a missing-key SystemExit would
+            # otherwise break every deployment that hasn't added them yet.
+            # speciesnet_model defaults to Google's own recommended model
+            # identifier, which SpeciesNetClassifier downloads
+            # automatically (via kagglehub, no account/credentials
+            # needed for this public model -- confirmed by actually
+            # downloading it) on first use, same as MegaDetector/DFNE's
+            # own weights already do. Override with a local directory
+            # path instead for a pre-downloaded, offline-friendly copy.
+            'classifier': parser.get('DETECTION', 'classifier',
+                                     fallback='dfne'),
+            'speciesnet_model': parser.get(
+                'DETECTION', 'speciesnet_model',
+                fallback='kaggle:google/speciesnet/pyTorch/v4.0.3a/1'),
             'max_age_days': parser.getint('CLEANUP', 'max_age_days'),
             'cleanup_interval': parser.getint('CLEANUP', 'cleanup_interval'),
         }
+        if cfg['classifier'] not in ('dfne', 'speciesnet'):
+            raise ValueError(
+                f"classifier must be 'dfne' or 'speciesnet', "
+                f"got {cfg['classifier']!r}")
+        return cfg
     except (configparser.Error, ValueError) as e:
         raise SystemExit(f"Invalid or incomplete {path}: {e} "
                          f"(see ac.cfg.example for the required keys)")
@@ -83,6 +103,16 @@ SUMMARY_INTERVAL = _cfg['summary_interval']
 SPECIES_THRESHOLD = _cfg['species_threshold']
 # Tolerance for "Static" detection, as a fraction of frame width/height.
 STATIC_TOLERANCE = _cfg['static_tolerance']
+# Species classifier backend: "dfne" (default, PytorchWildlife's own,
+# North American northeastern-US species set) or "speciesnet" (Google's
+# 2498-taxa classifier, better suited to regions DFNE doesn't cover well
+# -- e.g. no puma/mountain lion at all, and mule deer vs. DFNE's
+# white-tailed deer only). See README's Species Classifier section.
+CLASSIFIER_BACKEND = _cfg['classifier']
+# Kaggle/HuggingFace model identifier or local directory -- passed
+# straight through to SpeciesNetClassifier, which resolves either form
+# itself. Unused when CLASSIFIER_BACKEND is "dfne".
+SPECIESNET_MODEL = _cfg['speciesnet_model']
 
 # Cleanup Settings
 MAX_AGE_DAYS = _cfg['max_age_days']
@@ -241,8 +271,63 @@ def camera_thread(cam_num):
                         f"failed: {e}")
             time.sleep(5)
 
+def _classify_dfne(classifier, crop):
+    """Adapts PytorchWildlife's classifier API (DFNE, or any other
+    pw_classification.* model) to a plain (label, confidence) pair."""
+    s_res = classifier.single_image_classification(crop)
+    res = s_res[0] if isinstance(s_res, list) else s_res
+    label = next((v for v in
+                  (res.get('label'), res.get('prediction'), res.get('y_pred'))
+                  if v is not None), "Unknown")
+    conf = next((v for v in (res.get('confidence'), res.get('y_conf'))
+                 if v is not None), 0.0)
+    return label, conf
+
+def _classify_speciesnet(classifier, crop):
+    """Adapts SpeciesNet's classifier API to a plain (label, confidence)
+    pair. `crop` is a BGR numpy array (sliced directly out of a cv2
+    frame); SpeciesNet expects RGB PIL images, so this converts first --
+    getting that backwards would silently feed the model color-inverted
+    crops instead of raising anything.
+
+    Uses the bare classifier only (no detector/ensemble/geofencing from
+    the full SpeciesNet pipeline): `crop` is already isolated to a
+    MegaDetector animal detection, so no bounding box is passed to
+    preprocess() -- it uses the whole (already-cropped) image as-is."""
+    import PIL.Image
+    rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+    preprocessed = classifier.preprocess(PIL.Image.fromarray(rgb))
+    result = classifier.predict(filepath="crop", img=preprocessed)
+    classifications = result.get('classifications') or {}
+    classes = classifications.get('classes')
+    scores = classifications.get('scores')
+    if not classes:
+        return "Unknown", 0.0
+    # Raw labels are "<uuid>;class;order;family;genus;species;common_name"
+    # -- take the common name (last non-empty field); a higher-taxa or
+    # non-species prediction (e.g. "mammalia" alone, "blank") leaves
+    # fewer fields populated, so fall back to whatever's there.
+    parts = [p for p in classes[0].split(';') if p]
+    label = parts[-1].title() if parts else classes[0]
+    return label, float(scores[0])
+
+def _load_speciesnet_classifier():
+    """Lazily imports speciesnet -- an optional dependency (see
+    requirements-speciesnet.txt) not needed at all for the default DFNE
+    backend, so a plain DFNE-only install never needs its much heavier
+    dependency chain (pandas, matplotlib, kagglehub, ...).
+
+    SPECIESNET_MODEL is passed straight through to SpeciesNetClassifier,
+    which handles both forms itself: a kaggle: identifier (the default;
+    auto-downloaded via kagglehub on first use, same as MegaDetector/
+    DFNE's own weights -- confirmed this needs no Kaggle account for
+    Google's public model) or a local directory already containing a
+    pre-downloaded copy, for an offline-friendly deployment instead."""
+    from speciesnet import SpeciesNetClassifier
+    return SpeciesNetClassifier(SPECIESNET_MODEL, device="cpu")
+
 def _process_frame(cam_id, frame, detector, classifier, names, colors,
-                   last_det, motion_val, last_box):
+                   last_det, motion_val, last_box, classify_fn=_classify_dfne):
     """Runs detection (and species classification) on one sampled frame,
     annotates it, and fires an alert for any new, non-static detection."""
     results = detector.single_image_detection(frame)
@@ -265,15 +350,7 @@ def _process_frame(cam_id, frame, detector, classifier, names, colors,
                                  max(0, x1):min(w, x2)]
                     if crop.size > 0:
                         try:
-                            s_res = classifier.single_image_classification(crop)
-                            res = s_res[0] if isinstance(s_res, list) else s_res
-                            s_label = next((v for v in
-                                (res.get('label'), res.get('prediction'),
-                                 res.get('y_pred'))
-                                if v is not None), "Unknown")
-                            s_conf = next((v for v in
-                                (res.get('confidence'), res.get('y_conf'))
-                                if v is not None), 0.0)
+                            s_label, s_conf = classify_fn(classifier, crop)
                             if s_conf > SPECIES_THRESHOLD:
                                 label = f"{obj_name}: {s_label} ({s_conf:.2f})"
                         except Exception as e:
@@ -330,12 +407,19 @@ def ai_engine():
     try:
         detector = pw_detection.MegaDetectorV6(version="MDV6-yolov9-c",
                                                device="cpu", pretrained=True)
-        # DFNE ("Deepfaune-New-England", a USGS-retrained variant of the
-        # French Deepfaune model): unlike DeepfauneClassifier, its species
-        # set is North American (bobcat, coyote, black bear, gray/red fox,
-        # raccoon, skunk, white-tailed deer, wild turkey, etc.) -- matching
-        # this project's actual use case.
-        classifier = pw_classification.DFNE(device="cpu")
+        if CLASSIFIER_BACKEND == 'speciesnet':
+            classifier = _load_speciesnet_classifier()
+            classify_fn = _classify_speciesnet
+        else:
+            # DFNE ("Deepfaune-New-England", a USGS-retrained variant of
+            # the French Deepfaune model): unlike DeepfauneClassifier,
+            # its species set is North American (bobcat, coyote, black
+            # bear, gray/red fox, raccoon, skunk, white-tailed deer,
+            # wild turkey, etc.) -- matching this project's original
+            # (northeastern US) use case. See README's Species
+            # Classifier section for when speciesnet fits better.
+            classifier = pw_classification.DFNE(device="cpu")
+            classify_fn = _classify_dfne
     except Exception as e:
         logger.critical("[SYSTEM] Failed to load AI models:", exc_info=True)
         send_telegram_message(f"Animals Catcher FAILED to start: "
@@ -354,7 +438,8 @@ def ai_engine():
         cam_id, frame = detection_queue.get()
         try:
             _process_frame(cam_id, frame, detector, classifier, names,
-                           colors, last_det, motion_val, last_box)
+                           colors, last_det, motion_val, last_box,
+                           classify_fn)
         except Exception as e:
             logger.error(f"[SYSTEM] ai_engine failed processing frame "
                         f"from {cam_id}: {e}")

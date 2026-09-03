@@ -15,10 +15,13 @@ Two-Stage AI Pipeline:
 * Stage 1: [MegaDetectorV6](https://github.com/agentmorris/MegaDetector)
         (YOLOv9-C) for high-speed object detection.
 
-* Stage 2: [DFNE](https://code.usgs.gov/vtcfwru/deepfaune-new-england)
-        ("Deepfaune-New-England", a USGS retrain of the French
-        Deepfaune model on northeastern US species) for species
-        identification (Coyotes, Bobcats, Black Bear, etc.).
+* Stage 2: species identification, via a configurable classifier --
+        [DFNE](https://code.usgs.gov/vtcfwru/deepfaune-new-england)
+        (default; "Deepfaune-New-England", a USGS retrain of the French
+        Deepfaune model on northeastern US species) or
+        [SpeciesNet](https://github.com/google/cameratrapai) (Google's
+        2498-taxa classifier, for regions DFNE doesn't cover well). See
+        Species Classifier below.
 
 * Smart Alerts: Sends labeled snapshots to a Telegram bot with configurable
 cooldowns to prevent notification flooding.
@@ -55,7 +58,7 @@ following sections are defined:
 | CAMERA    | user, pass, ip, port | RTSP credentials and network address. |
 | TELEGRAM  | token, chat_id | Bot API token and target chat ID for alerts. |
 | PATHS     | base_output_folder | Storage location for snapshots. |
-| DETECTION | threshold_0-2, cooldown, frame_interval, summary_interval, species_threshold, static_tolerance | Confidence thresholds and alert frequency. |
+| DETECTION | threshold_0-2, cooldown, frame_interval, summary_interval, species_threshold, static_tolerance, classifier, speciesnet_model | Confidence thresholds, alert frequency, and species classifier choice. |
 | CLEANUP | max_age_days, cleanup_interval | Retention policy for snapshots. |
 
 `ac.cfg` holds RTSP and Telegram credentials in plaintext and must never be
@@ -130,6 +133,46 @@ SIGUSR1 to the PID in `ac.pid` (written at startup for this purpose),
 which `ac.py`'s own signal handler uses to reopen fresh file
 descriptors at the same two paths (via `AC_STDOUT_LOG`/`AC_STDERR_LOG`,
 set in com.user.ac.plist) -- no daemon restart needed.
+
+## Species Classifier
+
+Stage 2 (species identification) is configurable via `[DETECTION]
+classifier` in `ac.cfg`:
+
+* `dfne` (default): [DFNE](https://code.usgs.gov/vtcfwru/deepfaune-new-england),
+  needs only `requirements.txt`. Its species set is northeastern-US
+  (bobcat, coyote, black bear, gray/red fox, raccoon, skunk,
+  white-tailed deer, wild turkey, etc.) -- no changes needed for that
+  region.
+* `speciesnet`: [Google's SpeciesNet](https://github.com/google/cameratrapai),
+  2498 taxa, geographically broad -- better suited to regions DFNE
+  doesn't cover well (e.g. no puma/mountain lion in DFNE at all, and
+  mule deer vs. DFNE's white-tailed deer only). Also needs
+  `pip install -r requirements-speciesnet.txt` (a separate, much
+  heavier dependency set -- pandas, matplotlib, kagglehub, ... -- kept
+  out of the base install since most deployments won't use it).
+
+For `speciesnet`, `speciesnet_model` (also in `[DETECTION]`) selects
+which model to load -- defaults to Google's own recommended
+`kaggle:google/speciesnet/pyTorch/v4.0.3a/1`, downloaded automatically
+via `kagglehub` on first use (no Kaggle account needed for this public
+model; confirmed by actually downloading it -- expect ~215MB and
+20-40s to load on CPU). Set it to a local directory instead (one
+already containing a previously-downloaded copy) for an
+offline-friendly deployment.
+
+`requirements-speciesnet.txt` reintroduces the same `opencv-python`
+leak documented above (SpeciesNet also depends on `yolov5`) -- re-run
+the `pip uninstall opencv-python` / `--force-reinstall --no-deps
+opencv-python-headless` fix after installing it, same as after
+`requirements.txt` alone.
+
+Only the bare classifier is used here (single-crop inference on
+MegaDetector's already-cropped detections), not SpeciesNet's own
+CLI/ensemble pipeline -- so its geographic geofencing (e.g. restricting
+predictions to species actually found in California) isn't applied;
+every prediction is the classifier's raw top-1 guess across all 2498
+taxa.
 
 ## Project Structure
 

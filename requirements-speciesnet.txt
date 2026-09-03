@@ -1,0 +1,18 @@
+# Optional: only needed if ac.cfg sets [DETECTION] classifier = speciesnet.
+# A plain DFNE-only install (the default) never needs this file -- kept
+# separate from requirements.txt so that much heavier, mostly-unused
+# dependency chain (pandas, matplotlib, kagglehub, huggingface_hub,
+# reverse_geocoder, onnx2torch, ...) isn't forced onto every install.
+# We only ever use the bare SpeciesNetClassifier for single-crop
+# inference (see ac.py's _classify_speciesnet), not speciesnet's own
+# CLI/ensemble/geolocation pipeline, but pip installs its full
+# dependency set regardless of which parts of the package are actually
+# imported.
+#
+# Verified in a clean python3.10 venv, on top of requirements.txt: pulls
+# in yolov5==7.0.11 (already satisfies PytorchWildlife's own yolov5 need
+# too, both resolve to the same version) and reintroduces the
+# opencv-python leak documented in requirements.txt/README/deploy.sh --
+# re-run that project's uninstall/force-reinstall opencv-python-headless
+# fix after installing this file, same as after requirements.txt alone.
+speciesnet==5.0.5

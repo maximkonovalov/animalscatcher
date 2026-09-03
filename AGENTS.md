@@ -38,8 +38,13 @@ and alerting.
    threshold filtering), independent of whether it ends up alerting.
 2. **Classification:** If an animal is detected above `species_threshold`
    (config-driven, `ac.cfg` `[DETECTION]`), the agent crops the area and
-   passes it to **DFNE** ("Deepfaune-New-England", a USGS retrain of
-   Deepfaune on North American species) for species identification.
+   passes it to a configurable classifier (`[DETECTION] classifier`):
+   **DFNE** by default ("Deepfaune-New-England", a USGS retrain of
+   Deepfaune on North American species), or **SpeciesNet** (Google's
+   2498-taxa classifier) for regions DFNE covers poorly. `_classify_dfne`
+   and `_classify_speciesnet` adapt each backend's own API to the same
+   `(label, confidence)` pair `_process_frame()` actually uses -- see
+   README's Species Classifier section.
 3. **Labeling:** Annotates the frame with type, species, and confidence.
 4. **Alerting:** If motion is confirmed (past `cooldown`) and the
    detection isn't static (within `static_tolerance`, also config-driven),

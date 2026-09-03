@@ -22,6 +22,18 @@ species_threshold = 0.45
 # Tolerance for "Static" object detection, as a fraction of frame
 # width/height (e.g., 0.03 = approx 3%)
 static_tolerance = 0.03
+# Species classifier (Stage 2): "dfne" (default, requirements.txt only
+# -- northeastern US species) or "speciesnet" (requires also installing
+# requirements-speciesnet.txt -- 2498 taxa, better suited to regions
+# DFNE doesn't cover, e.g. no puma/mountain lion at all, mule deer vs.
+# DFNE's white-tailed deer only). See README's Species Classifier
+# section.
+# classifier = dfne
+# Only used when classifier = speciesnet. A kaggle: model identifier
+# (auto-downloaded on first use, no Kaggle account needed for Google's
+# public model) or a local directory with a pre-downloaded copy.
+# Defaults to Google's own recommended model if left unset.
+# speciesnet_model = kaggle:google/speciesnet/pyTorch/v4.0.3a/1
 
 [PATHS]
 base_output_folder = /home/ac/snaps

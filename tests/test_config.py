@@ -61,6 +61,8 @@ def test_valid_config_returns_expected_values(tmp_path):
     assert cfg["static_tolerance"] == 0.03
     assert cfg["max_age_days"] == 7
     assert cfg["cleanup_interval"] == 24
+    assert cfg["classifier"] == "dfne"
+    assert cfg["speciesnet_model"] == "kaggle:google/speciesnet/pyTorch/v4.0.3a/1"
 
 
 def test_missing_file_raises_systemexit_with_path(tmp_path):
@@ -123,6 +125,62 @@ def test_invalid_numeric_value_raises_friendly_systemexit(tmp_path):
         ac.load_config(path)
 
     assert "ac.cfg.example" in str(exc_info.value)
+
+
+def test_classifier_and_speciesnet_model_default_when_keys_absent(tmp_path):
+    # classifier/speciesnet_model postdate every existing ac.cfg, so
+    # they must default rather than be required -- see the comment in
+    # load_config().
+    assert "classifier" not in VALID_CFG
+    path = write_cfg(tmp_path, VALID_CFG)
+
+    cfg = ac.load_config(path)
+
+    assert cfg["classifier"] == "dfne"
+    assert cfg["speciesnet_model"] == "kaggle:google/speciesnet/pyTorch/v4.0.3a/1"
+
+
+def test_speciesnet_classifier_with_custom_model_path_is_accepted(tmp_path):
+    cfg_with_speciesnet = VALID_CFG.replace(
+        "static_tolerance = 0.03\n",
+        "static_tolerance = 0.03\n"
+        "classifier = speciesnet\n"
+        "speciesnet_model = /opt/speciesnet_model\n")
+    path = write_cfg(tmp_path, cfg_with_speciesnet)
+
+    cfg = ac.load_config(path)
+
+    assert cfg["classifier"] == "speciesnet"
+    assert cfg["speciesnet_model"] == "/opt/speciesnet_model"
+
+
+def test_speciesnet_classifier_without_explicit_model_uses_default(tmp_path):
+    # classifier=speciesnet alone (no speciesnet_model override) should
+    # work, falling back to Google's own recommended kaggle: identifier
+    # rather than requiring every speciesnet user to also set this.
+    cfg_with_speciesnet = VALID_CFG.replace(
+        "static_tolerance = 0.03\n",
+        "static_tolerance = 0.03\nclassifier = speciesnet\n")
+    path = write_cfg(tmp_path, cfg_with_speciesnet)
+
+    cfg = ac.load_config(path)
+
+    assert cfg["classifier"] == "speciesnet"
+    assert cfg["speciesnet_model"] == "kaggle:google/speciesnet/pyTorch/v4.0.3a/1"
+
+
+def test_invalid_classifier_value_raises_friendly_systemexit(tmp_path):
+    cfg_with_bad_classifier = VALID_CFG.replace(
+        "static_tolerance = 0.03\n",
+        "static_tolerance = 0.03\nclassifier = bogus\n")
+    path = write_cfg(tmp_path, cfg_with_bad_classifier)
+
+    with pytest.raises(SystemExit) as exc_info:
+        ac.load_config(path)
+
+    message = str(exc_info.value)
+    assert "bogus" in message
+    assert "ac.cfg.example" in message
 
 
 def test_unreadable_or_missing_file_error_is_not_a_bare_traceback(tmp_path):
