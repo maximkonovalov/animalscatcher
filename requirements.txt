@@ -33,7 +33,7 @@ requests==2.34.2
 # if left unpinned -- pinning opencv-python-headless above avoids that
 # newer opencv in the first place, but pin numpy explicitly too so the
 # resolver can't drift here again.
-numpy==1.26.4
+numpy==2.5.2
 
 # setuptools==59.5.0: yolov5 (a transitive dependency via PytorchWildlife)
 # imports pkg_resources at module level. Modern setuptools (~80+) removes
