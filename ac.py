@@ -19,7 +19,7 @@ from PytorchWildlife.models import classification as pw_classification
 from PytorchWildlife.models import detection as pw_detection
 
 # --- 0. VERSIONING ---
-VERSION = "0.11"
+VERSION = "0.12"
 
 # RTSP channel numbers to monitor (see camera_thread / STARTUP).
 CAMERA_CHANNELS = [4, 5, 6]
