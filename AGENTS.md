@@ -37,8 +37,11 @@ and alerting.
    Vehicles. Every raw detection is logged with its confidence (before
    threshold filtering), independent of whether it ends up alerting.
 2. **Classification:** If an animal is detected above `species_threshold`
-   (config-driven, `ac.cfg` `[DETECTION]`), the agent crops the area and
-   passes it to a configurable classifier (`[DETECTION] classifier`):
+   (config-driven, `ac.cfg` `[DETECTION]`), the agent crops the area --
+   padded beyond the raw detection box by `crop_padding` (a fraction of
+   the box's own size, default 15%), so a tight box doesn't clip a
+   tail, ear, or antler the classifier needs -- and passes it to a
+   configurable classifier (`[DETECTION] classifier`):
    **DFNE** by default ("Deepfaune-New-England", a USGS retrain of
    Deepfaune on North American species), or **SpeciesNet** (Google's
    2498-taxa classifier) for regions DFNE covers poorly. `_classify_dfne`

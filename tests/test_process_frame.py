@@ -48,8 +48,10 @@ class FakeClassifier:
     def __init__(self, label="Coyote", confidence=0.8):
         self._label = label
         self._confidence = confidence
+        self.last_crop_shape = None
 
     def single_image_classification(self, crop):
+        self.last_crop_shape = crop.shape
         return {"label": self._label, "confidence": self._confidence}
 
 
@@ -215,3 +217,36 @@ def test_no_detections_leaves_stats_unchanged(frame):
     run(detector, classifier, frame, state)
 
     assert ac.stats["Animal"] == 0
+
+
+def test_species_classification_crop_is_padded_beyond_raw_box(
+        frame, capture_photo_submits):
+    # Raw box is 40x40 ([10,10,50,50]); CROP_PADDING (default 0.15)
+    # should make the actual classification crop strictly larger on
+    # each side, so a tight box doesn't clip a tail/ear/antler.
+    detector = FakeDetector([0.9], [0], [[10, 10, 50, 50]])
+    classifier = FakeClassifier()
+    state = ({}, {}, {})
+
+    run(detector, classifier, frame, state)
+
+    assert classifier.last_crop_shape is not None
+    height, width = classifier.last_crop_shape[:2]
+    assert height > 40
+    assert width > 40
+
+
+def test_species_classification_crop_padding_clamps_to_frame_bounds(
+        frame, capture_photo_submits):
+    # Box touching the frame's top-left corner: padding would push
+    # coordinates negative before clamping.
+    detector = FakeDetector([0.9], [0], [[0, 0, 20, 20]])
+    classifier = FakeClassifier()
+    state = ({}, {}, {})
+
+    run(detector, classifier, frame, state)
+
+    assert classifier.last_crop_shape is not None
+    height, width = classifier.last_crop_shape[:2]
+    assert 0 < height <= frame.shape[0]
+    assert 0 < width <= frame.shape[1]

@@ -34,6 +34,11 @@ static_tolerance = 0.03
 # public model) or a local directory with a pre-downloaded copy.
 # Defaults to Google's own recommended model if left unset.
 # speciesnet_model = kaggle:google/speciesnet/pyTorch/v4.0.3a/1
+# Extra margin added around a detection box before cropping for species
+# classification, as a fraction of the box's own width/height (e.g.,
+# 0.15 = 15% larger on each side). A tight box can clip a tail, ear, or
+# antler the classifier needs.
+# crop_padding = 0.15
 
 [PATHS]
 base_output_folder = /home/ac/snaps

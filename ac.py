@@ -70,6 +70,14 @@ def load_config(path):
             'speciesnet_model': parser.get(
                 'DETECTION', 'speciesnet_model',
                 fallback='kaggle:google/speciesnet/pyTorch/v4.0.3a/1'),
+            # Extra margin added around MegaDetector's box before cropping
+            # for species classification, as a fraction of the box's own
+            # width/height. A tight box can clip a tail, ear, or antler
+            # that the classifier needs -- doesn't affect the drawn
+            # detection box or the static-position filter, only the
+            # classifier's input crop.
+            'crop_padding': parser.getfloat('DETECTION', 'crop_padding',
+                                            fallback=0.15),
             'max_age_days': parser.getint('CLEANUP', 'max_age_days'),
             'cleanup_interval': parser.getint('CLEANUP', 'cleanup_interval'),
         }
@@ -113,6 +121,9 @@ CLASSIFIER_BACKEND = _cfg['classifier']
 # straight through to SpeciesNetClassifier, which resolves either form
 # itself. Unused when CLASSIFIER_BACKEND is "dfne".
 SPECIESNET_MODEL = _cfg['speciesnet_model']
+# Margin added around a detection box before cropping for species
+# classification, as a fraction of the box's own width/height.
+CROP_PADDING = _cfg['crop_padding']
 
 # Cleanup Settings
 MAX_AGE_DAYS = _cfg['max_age_days']
@@ -346,8 +357,15 @@ def _process_frame(cam_id, frame, detector, classifier, names, colors,
                 x1, y1, x2, y2 = (int(box[0]), int(box[1]),
                                   int(box[2]), int(box[3]))
                 if cls == 0 and conf > SPECIES_THRESHOLD:
-                    crop = frame[max(0, y1):min(h, y2),
-                                 max(0, x1):min(w, x2)]
+                    # Pad the box before cropping for classification --
+                    # a tight box can clip a tail, ear, or antler the
+                    # classifier needs. Only affects this crop; x1/y1/x2/y2
+                    # themselves (the drawn box, the static-position
+                    # filter) are untouched.
+                    pad_x = int((x2 - x1) * CROP_PADDING)
+                    pad_y = int((y2 - y1) * CROP_PADDING)
+                    crop = frame[max(0, y1 - pad_y):min(h, y2 + pad_y),
+                                 max(0, x1 - pad_x):min(w, x2 + pad_x)]
                     if crop.size > 0:
                         try:
                             s_label, s_conf = classify_fn(classifier, crop)

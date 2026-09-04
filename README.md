@@ -58,7 +58,7 @@ following sections are defined:
 | CAMERA    | user, pass, ip, port | RTSP credentials and network address. |
 | TELEGRAM  | token, chat_id | Bot API token and target chat ID for alerts. |
 | PATHS     | base_output_folder | Storage location for snapshots. |
-| DETECTION | threshold_0-2, cooldown, frame_interval, summary_interval, species_threshold, static_tolerance, classifier, speciesnet_model | Confidence thresholds, alert frequency, and species classifier choice. |
+| DETECTION | threshold_0-2, cooldown, frame_interval, summary_interval, species_threshold, static_tolerance, classifier, speciesnet_model, crop_padding | Confidence thresholds, alert frequency, and species classifier choice. |
 | CLEANUP | max_age_days, cleanup_interval | Retention policy for snapshots. |
 
 `ac.cfg` holds RTSP and Telegram credentials in plaintext and must never be
