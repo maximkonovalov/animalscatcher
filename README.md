@@ -62,8 +62,9 @@ following sections are defined:
 | CLEANUP | max_age_days, cleanup_interval | Retention policy for snapshots. |
 
 `ac.cfg` holds RTSP and Telegram credentials in plaintext and must never be
-committed (it's covered by `.gitignore`). Since the daemon typically runs as
-root via launchd, lock the file down to the owning user:
+committed (it's covered by `.gitignore`). Since the daemon runs via launchd
+under whichever account `UserName` in `com.user.ac.plist` specifies (or root,
+if that key is absent), lock the file down to the owning user:
 
     chmod 600 ac.cfg
 
