@@ -70,7 +70,7 @@ if that key is absent), lock the file down to the owning user:
 
 ## Installation & Usage
 
-Deploy Code: Place ac.py and ac.cfg in a working directory..
+Deploy Code: Place ac.py and ac.cfg in a working directory.
 
 Install Dependencies:
 
