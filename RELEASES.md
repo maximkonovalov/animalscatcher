@@ -1,6 +1,60 @@
 Release History
 ===============
 
+v0.12 - 2026-09-05
+------------------
+
+Added:
+  - A configurable species classifier: [DETECTION] classifier =
+    dfne (default) or speciesnet in ac.cfg. speciesnet is Google's
+    SpeciesNet (2498 taxa), added as a prototype for regions DFNE
+    covers poorly -- confirmed against the actual downloaded label
+    file that DFNE has no puma/mountain lion at all, and only
+    white-tailed deer (not mule deer, the common western-US species).
+    speciesnet_model selects which model to load, defaulting to
+    Google's own recommended kaggle: identifier -- auto-downloaded via
+    kagglehub on first use, no Kaggle account needed for this public
+    model (confirmed by actually downloading it: ~215MB, 20-40s to
+    load on CPU). speciesnet is a separate, optional
+    requirements-speciesnet.txt, not added to requirements.txt: its
+    dependency chain (pandas, matplotlib, kagglehub, huggingface_hub,
+    reverse_geocoder, onnx2torch, ...) is much heavier than DFNE's, and
+    most deployments won't use it. Ran real end-to-end inference with
+    the downloaded model to confirm the integration actually works
+    (a random-noise crop correctly classified as "Blank" at 99.91%
+    confidence), not just that it imports.
+  - [DETECTION] crop_padding (default 15%): pads the detection box
+    before cropping for species classification, so a tight MegaDetector
+    box doesn't clip a tail, ear, or antler the classifier needs. Only
+    affects the classifier's input crop -- the drawn detection box and
+    the static-position filter still use the original coordinates.
+
+Fixed:
+  - opencv-python (non-headless) was silently installed alongside the
+    opencv-python-headless pinned in requirements.txt, and winning the
+    cv2 import -- confirmed via cv2.__version__ in a clean venv;
+    `pip check` alone doesn't catch this since both packages "install"
+    without error. Comes from PytorchWildlife's own ultralytics/yolov5
+    dependencies, unconditionally requiring plain opencv-python. v0.7
+    already fought this exact leak with a force-reinstall step that
+    v0.8's PytorchWildlife 1.1.1->1.3.0 upgrade silently undid; restored
+    in deploy.sh, ci.yml, and the README's install instructions.
+  - deploy.sh used `launchctl kickstart -k` to restart the daemon,
+    which reuses launchd's cached job definition and never re-reads
+    the plist from disk -- confirmed the new speciesnet-related env
+    vars would have silently never applied on a plain deploy. Always
+    does a full unload/reload now, with a 3s wait between them (an
+    immediate bootstrap after bootout can itself fail while launchd is
+    still tearing the old job down).
+  - deploy.sh's `git pull origin main` always pulled main regardless of
+    which branch was checked out, making it impossible to deploy a
+    feature branch for testing. Plain `git pull` now follows whatever
+    branch is actually checked out.
+  - The periodic summary report's header still said "NVR SUMMARY"
+    instead of the project's actual name.
+  - Two stale README inaccuracies: the daemon no longer "typically
+    runs as root" (UserName maxim since v0.9) and a doubled-period typo.
+
 v0.11 - 2026-09-03
 ------------------
 
