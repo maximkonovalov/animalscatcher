@@ -232,7 +232,7 @@ def summary_engine():
                 s_list = [f"- {k}: {v['status']} ({v['res']})"
                           for k, v in stats["streams"].items()]
                 s_info = "\n".join(s_list)
-                report = (f"--- NVR SUMMARY ---\n"
+                report = (f"--- Animals Catcher Summary ---\n"
                           f"Version: {VERSION}\n"
                           f"Range: {stats['start_time'].strftime('%d/%m/%Y %H:%M')} - "
                           f"{now.strftime('%d/%m/%Y %H:%M')}\n\n"
