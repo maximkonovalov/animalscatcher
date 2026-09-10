@@ -57,7 +57,11 @@ and alerting.
 
 ### Summary Agent (`summary_engine`)
 A background observer that tracks stream health and detection counts. It
-provides a heartbeat to ensure the system is active.
+provides a heartbeat to ensure the system is active. Also reports how
+many sampled frames were dropped because `detection_queue` was full --
+all cameras share one `ai_engine` thread, and MegaDetector's per-frame
+CPU cost means sampling can outpace processing; this is the visibility
+into that, rather than it failing silently.
 
 ### Cleanup Agent (`cleanup_engine`)
 A maintenance worker that keeps the host system stable.

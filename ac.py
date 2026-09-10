@@ -155,6 +155,7 @@ detection_queue = queue.Queue(maxsize=15)
 stats_lock = threading.Lock()
 stats = {
     "Animal": 0, "Person": 0, "Vehicle": 0,
+    "frames_sampled": 0, "frames_dropped": 0,
     "start_time": datetime.datetime.now(),
     "streams": {}
 }
@@ -232,6 +233,9 @@ def summary_engine():
                 s_list = [f"- {k}: {v['status']} ({v['res']})"
                           for k, v in stats["streams"].items()]
                 s_info = "\n".join(s_list)
+                sampled = stats["frames_sampled"]
+                dropped = stats["frames_dropped"]
+                drop_pct = (dropped / sampled * 100) if sampled else 0.0
                 report = (f"--- Animals Catcher Summary ---\n"
                           f"Version: {VERSION}\n"
                           f"Range: {stats['start_time'].strftime('%d/%m/%Y %H:%M')} - "
@@ -239,8 +243,12 @@ def summary_engine():
                           f"STREAMS:\n{s_info}\n\n"
                           f"DETECTIONS:\n- Animals: {stats['Animal']}\n"
                           f"- People: {stats['Person']}\n"
-                          f"- Vehicles: {stats['Vehicle']}")
+                          f"- Vehicles: {stats['Vehicle']}\n\n"
+                          f"AI QUEUE:\n- Sampled: {sampled}\n"
+                          f"- Dropped (queue full): {dropped} "
+                          f"({drop_pct:.0f}%)")
                 stats.update({"Animal": 0, "Person": 0, "Vehicle": 0,
+                              "frames_sampled": 0, "frames_dropped": 0,
                               "start_time": now})
             send_telegram_message(report)
         except Exception as e:
@@ -272,10 +280,20 @@ def camera_thread(cam_num):
                 stats["streams"][cam_id] = {"status": "ONLINE",
                                             "res": f"{w}x{h}"}
             if f_idx % FRAME_INTERVAL == 0:
+                with stats_lock:
+                    stats["frames_sampled"] += 1
                 try:
                     detection_queue.put_nowait((cam_id, frame))
                 except queue.Full:
-                    pass
+                    # ai_engine is a single thread shared by every camera,
+                    # and MegaDetector takes several seconds per frame on
+                    # CPU -- if sampling outpaces that, frames are dropped
+                    # here silently. Counted (not logged per-drop, which
+                    # would just flood the log at the same rate) so
+                    # summary_engine's periodic report can show whether
+                    # this is actually happening.
+                    with stats_lock:
+                        stats["frames_dropped"] += 1
             f_idx += 1
         except Exception as e:
             logger.error(f"[SYSTEM] camera_thread({cam_id}) iteration "
