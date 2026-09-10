@@ -9,7 +9,7 @@
 # feature (no imshow/waitKey), and the non-headless build pulls in
 # libGL/GTK/X11 system libraries that a headless server or minimal
 # Linux CI image won't have installed.
-opencv-python-headless==4.10.0.84
+opencv-python-headless==5.0.0.93
 
 # PytorchWildlife's detector/classifier constructor APIs differ between
 # releases (the version string MegaDetectorV6 accepts, and whether
