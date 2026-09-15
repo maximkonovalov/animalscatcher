@@ -39,6 +39,13 @@ static_tolerance = 0.03
 # 0.15 = 15% larger on each side). A tight box can clip a tail, ear, or
 # antler the classifier needs.
 # crop_padding = 0.15
+# Fraction of a downsampled frame that must change (beyond sensor/
+# compression noise) for camera_thread to treat it as motion and queue
+# the frame immediately, in addition to the regular frame_interval
+# cadence. Checked on every raw frame -- far cheaper than the AI
+# pipeline, so it catches fast-moving animals frame_interval alone can
+# miss entirely. Lower = more sensitive (more frames queued).
+# motion_threshold = 0.02
 
 [PATHS]
 base_output_folder = /home/ac/snaps

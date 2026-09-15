@@ -22,7 +22,13 @@ The system consists of four primary agent types running in parallel:
 Each camera defined in the startup sequence spawns its own dedicated thread.
 * **Resilience:** If a stream drops, the agent enters a retry loop.
 * **Sampling:** To save CPU, only every $N$-th frame (via `frame_interval`)
-  is sent to the shared `detection_queue`.
+  is sent to the shared `detection_queue` -- *plus* any frame where
+  `_frame_changed()` detects motion (via `motion_threshold`), checked
+  on every raw frame since it's far cheaper than the AI pipeline. This
+  is additive, not a replacement: `frame_interval` alone can miss a
+  fast animal's entire visible window between samples, so motion
+  detection adds responsiveness on top of the existing periodic
+  baseline rather than replacing it.
 
 ### AI Inference Agent (`ai_engine`)
 The core "brain" of the system. Before loading any model, it clears out

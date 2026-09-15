@@ -78,6 +78,16 @@ def load_config(path):
             # classifier's input crop.
             'crop_padding': parser.getfloat('DETECTION', 'crop_padding',
                                             fallback=0.15),
+            # Fraction of a downsampled, grayscale raw frame that must
+            # change (beyond sensor/compression noise) for camera_thread
+            # to treat it as motion and queue it immediately, in addition
+            # to (not instead of) the regular frame_interval cadence --
+            # see camera_thread. Checked on every raw frame, since it's
+            # far cheaper than MegaDetector; frame_interval alone can
+            # miss a fast animal's entire visible window between samples.
+            'motion_threshold': parser.getfloat('DETECTION',
+                                                'motion_threshold',
+                                                fallback=0.02),
             'max_age_days': parser.getint('CLEANUP', 'max_age_days'),
             'cleanup_interval': parser.getint('CLEANUP', 'cleanup_interval'),
         }
@@ -124,6 +134,8 @@ SPECIESNET_MODEL = _cfg['speciesnet_model']
 # Margin added around a detection box before cropping for species
 # classification, as a fraction of the box's own width/height.
 CROP_PADDING = _cfg['crop_padding']
+# Fraction of a downsampled frame that must change to count as motion.
+MOTION_THRESHOLD = _cfg['motion_threshold']
 
 # Cleanup Settings
 MAX_AGE_DAYS = _cfg['max_age_days']
@@ -155,7 +167,7 @@ detection_queue = queue.Queue(maxsize=15)
 stats_lock = threading.Lock()
 stats = {
     "Animal": 0, "Person": 0, "Vehicle": 0,
-    "frames_sampled": 0, "frames_dropped": 0,
+    "frames_sampled": 0, "frames_dropped": 0, "frames_motion_triggered": 0,
     "start_time": datetime.datetime.now(),
     "streams": {}
 }
@@ -235,6 +247,7 @@ def summary_engine():
                 s_info = "\n".join(s_list)
                 sampled = stats["frames_sampled"]
                 dropped = stats["frames_dropped"]
+                motion = stats["frames_motion_triggered"]
                 drop_pct = (dropped / sampled * 100) if sampled else 0.0
                 report = (f"--- Animals Catcher Summary ---\n"
                           f"Version: {VERSION}\n"
@@ -244,15 +257,35 @@ def summary_engine():
                           f"DETECTIONS:\n- Animals: {stats['Animal']}\n"
                           f"- People: {stats['Person']}\n"
                           f"- Vehicles: {stats['Vehicle']}\n\n"
-                          f"AI QUEUE:\n- Sampled: {sampled}\n"
+                          f"AI QUEUE:\n- Sampled: {sampled} "
+                          f"(motion-triggered: {motion})\n"
                           f"- Dropped (queue full): {dropped} "
                           f"({drop_pct:.0f}%)")
                 stats.update({"Animal": 0, "Person": 0, "Vehicle": 0,
                               "frames_sampled": 0, "frames_dropped": 0,
+                              "frames_motion_triggered": 0,
                               "start_time": now})
             send_telegram_message(report)
         except Exception as e:
             logger.error(f"[SYSTEM] summary_engine iteration failed: {e}")
+
+def _frame_changed(prev_gray, frame, threshold):
+    """Cheap per-raw-frame motion check, far cheaper than a MegaDetector
+    pass: downsamples and blurs (both for speed and to suppress sensor/
+    compression noise that would otherwise register as motion on nearly
+    every frame), then compares against the last-checked frame. Returns
+    (changed, new_gray) -- new_gray becomes the next call's prev_gray.
+    The very first call (prev_gray is None) always reports changed, so
+    the first frame from a stream still gets queued."""
+    small = cv2.resize(frame, (160, 120))
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+    if prev_gray is None:
+        return True, gray
+    diff = cv2.absdiff(gray, prev_gray)
+    _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
+    changed_fraction = cv2.countNonZero(thresh) / thresh.size
+    return changed_fraction > threshold, gray
 
 def camera_thread(cam_num):
     """Maintains RTSP connection and samples frames for the AI."""
@@ -263,6 +296,7 @@ def camera_thread(cam_num):
     os.makedirs(os.path.join(BASE_OUTPUT_FOLDER, cam_id), exist_ok=True)
     cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
     f_idx = 0
+    prev_gray = None
     while True:
         try:
             success, frame = cap.read()
@@ -279,9 +313,16 @@ def camera_thread(cam_num):
             with stats_lock:
                 stats["streams"][cam_id] = {"status": "ONLINE",
                                             "res": f"{w}x{h}"}
-            if f_idx % FRAME_INTERVAL == 0:
+            # Checked on every raw frame, not just sampled ones -- far
+            # cheaper than MegaDetector, and frame_interval alone can
+            # miss a fast animal's entire visible window between samples.
+            motion, prev_gray = _frame_changed(prev_gray, frame,
+                                               MOTION_THRESHOLD)
+            if motion or f_idx % FRAME_INTERVAL == 0:
                 with stats_lock:
                     stats["frames_sampled"] += 1
+                    if motion:
+                        stats["frames_motion_triggered"] += 1
                 try:
                     detection_queue.put_nowait((cam_id, frame))
                 except queue.Full:
