@@ -163,7 +163,27 @@ logger.addHandler(_log_handler)
 logger.propagate = False
 
 # --- 3. SHARED DATA & LOCKS ---
-detection_queue = queue.Queue(maxsize=15)
+# A PriorityQueue, not a plain Queue: ai_engine is a single thread
+# shared by every camera and can't keep up with the combined sampling
+# rate (frames get dropped when full -- see camera_thread), so once a
+# motion-triggered frame does get in, it should be drained before any
+# routine frame_interval-only one sitting alongside it, not just
+# whichever happened to queue first.
+detection_queue = queue.PriorityQueue(maxsize=15)
+# Items are (priority, seq, cam_id, frame) -- seq is a strictly
+# increasing tie-breaker so PriorityQueue's internal comparison never
+# needs to fall through to comparing frame (a numpy array), which
+# would raise. Shared across all camera threads, so it's incremented
+# under its own lock rather than relying on GIL happenstance.
+_queue_seq = 0
+_queue_seq_lock = threading.Lock()
+
+def _next_queue_seq():
+    global _queue_seq
+    with _queue_seq_lock:
+        _queue_seq += 1
+        return _queue_seq
+
 stats_lock = threading.Lock()
 stats = {
     "Animal": 0, "Person": 0, "Vehicle": 0,
@@ -324,7 +344,11 @@ def camera_thread(cam_num):
                     if motion:
                         stats["frames_motion_triggered"] += 1
                 try:
-                    detection_queue.put_nowait((cam_id, frame))
+                    # priority 0 (motion) is drained before 1
+                    # (frame_interval-only) -- see detection_queue above.
+                    priority = 0 if motion else 1
+                    detection_queue.put_nowait(
+                        (priority, _next_queue_seq(), cam_id, frame))
                 except queue.Full:
                     # ai_engine is a single thread shared by every camera,
                     # and MegaDetector takes several seconds per frame on
@@ -512,7 +536,7 @@ def ai_engine():
         f"Started: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
         f"Streams: {len(CAMERA_CHANNELS)}")
     while True:
-        cam_id, frame = detection_queue.get()
+        _priority, _seq, cam_id, frame = detection_queue.get()
         try:
             _process_frame(cam_id, frame, detector, classifier, names,
                            colors, last_det, motion_val, last_box,

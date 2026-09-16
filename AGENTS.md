@@ -29,6 +29,16 @@ Each camera defined in the startup sequence spawns its own dedicated thread.
   fast animal's entire visible window between samples, so motion
   detection adds responsiveness on top of the existing periodic
   baseline rather than replacing it.
+* **Queue priority:** `detection_queue` is a `PriorityQueue`, not FIFO
+  -- motion-triggered frames (priority 0) are drained by the AI Agent
+  before frame_interval-only ones (priority 1) waiting alongside them,
+  via a `(priority, seq, cam_id, frame)` tuple where `seq` is a
+  strictly increasing tie-breaker (needed so same-priority comparisons
+  never fall through to comparing `frame`, a numpy array, which raises).
+  This only affects drain order for frames already queued, though --
+  `put_nowait()` on an already-full queue still drops the new frame
+  regardless of its priority; it doesn't evict a lower-priority one to
+  make room.
 
 ### AI Inference Agent (`ai_engine`)
 The core "brain" of the system. Before loading any model, it clears out
