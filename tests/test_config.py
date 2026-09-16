@@ -63,6 +63,9 @@ def test_valid_config_returns_expected_values(tmp_path):
     assert cfg["cleanup_interval"] == 24
     assert cfg["classifier"] == "dfne"
     assert cfg["speciesnet_model"] == "kaggle:google/speciesnet/pyTorch/v4.0.3a/1"
+    assert cfg["crop_padding"] == 0.15
+    assert cfg["motion_threshold"] == 0.02
+    assert cfg["motion_check_interval"] == 3
 
 
 def test_missing_file_raises_systemexit_with_path(tmp_path):

@@ -82,12 +82,21 @@ def load_config(path):
             # change (beyond sensor/compression noise) for camera_thread
             # to treat it as motion and queue it immediately, in addition
             # to (not instead of) the regular frame_interval cadence --
-            # see camera_thread. Checked on every raw frame, since it's
-            # far cheaper than MegaDetector; frame_interval alone can
-            # miss a fast animal's entire visible window between samples.
+            # see camera_thread. frame_interval alone can miss a fast
+            # animal's entire visible window between samples.
             'motion_threshold': parser.getfloat('DETECTION',
                                                 'motion_threshold',
                                                 fallback=0.02),
+            # How often (in raw frames) to actually run the motion check
+            # -- cheap per call, but on constrained hardware doing it on
+            # literally every raw frame, across every camera thread
+            # continuously, measurably competes with ai_engine for CPU
+            # time (observed: inference time rising, CPU idle dropping
+            # to 5-10%). Still far more frequent than frame_interval
+            # alone, just not maximal.
+            'motion_check_interval': parser.getint('DETECTION',
+                                                    'motion_check_interval',
+                                                    fallback=3),
             'max_age_days': parser.getint('CLEANUP', 'max_age_days'),
             'cleanup_interval': parser.getint('CLEANUP', 'cleanup_interval'),
         }
@@ -136,6 +145,8 @@ SPECIESNET_MODEL = _cfg['speciesnet_model']
 CROP_PADDING = _cfg['crop_padding']
 # Fraction of a downsampled frame that must change to count as motion.
 MOTION_THRESHOLD = _cfg['motion_threshold']
+# How often (in raw frames) to actually run the motion check.
+MOTION_CHECK_INTERVAL = _cfg['motion_check_interval']
 
 # Cleanup Settings
 MAX_AGE_DAYS = _cfg['max_age_days']
@@ -333,11 +344,18 @@ def camera_thread(cam_num):
             with stats_lock:
                 stats["streams"][cam_id] = {"status": "ONLINE",
                                             "res": f"{w}x{h}"}
-            # Checked on every raw frame, not just sampled ones -- far
-            # cheaper than MegaDetector, and frame_interval alone can
-            # miss a fast animal's entire visible window between samples.
-            motion, prev_gray = _frame_changed(prev_gray, frame,
-                                               MOTION_THRESHOLD)
+            # Checked every motion_check_interval-th raw frame (not
+            # every one -- cheap per call, but continuously across every
+            # camera thread it measurably competes with ai_engine for
+            # CPU on constrained hardware), independent of
+            # frame_interval. On a skipped iteration prev_gray just
+            # stays as of the last *checked* frame, which is the
+            # correct comparison baseline for next time.
+            if f_idx % MOTION_CHECK_INTERVAL == 0:
+                motion, prev_gray = _frame_changed(prev_gray, frame,
+                                                   MOTION_THRESHOLD)
+            else:
+                motion = False
             if motion or f_idx % FRAME_INTERVAL == 0:
                 with stats_lock:
                     stats["frames_sampled"] += 1

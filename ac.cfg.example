@@ -42,10 +42,17 @@ static_tolerance = 0.03
 # Fraction of a downsampled frame that must change (beyond sensor/
 # compression noise) for camera_thread to treat it as motion and queue
 # the frame immediately, in addition to the regular frame_interval
-# cadence. Checked on every raw frame -- far cheaper than the AI
-# pipeline, so it catches fast-moving animals frame_interval alone can
-# miss entirely. Lower = more sensitive (more frames queued).
+# cadence. Catches fast-moving animals frame_interval alone can miss
+# entirely. Lower = more sensitive (more frames queued).
 # motion_threshold = 0.02
+# How often (in raw frames) to actually run the motion check above --
+# cheap per call, but doing it on literally every raw frame across
+# every camera thread continuously can measurably compete with the AI
+# pipeline for CPU on constrained hardware. Raise this (check less
+# often) if you see inference time increasing / CPU idle time dropping
+# after enabling motion detection; still far more frequent than
+# frame_interval alone at the default.
+# motion_check_interval = 3
 
 [PATHS]
 base_output_folder = /home/ac/snaps
