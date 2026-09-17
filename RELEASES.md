@@ -1,6 +1,85 @@
 Release History
 ===============
 
+v0.13 - 2026-09-17
+------------------
+
+Detection-quality investigation, driven end to end by data rather than
+guessing: every change here was motivated by a specific measurement,
+and every change was itself measured afterward. Also fixed a real
+production incident hit along the way.
+
+Added:
+  - frames_sampled/frames_dropped counters, reported (with a computed
+    drop percentage) in summary_engine's periodic Telegram report.
+    Built to answer "are we missing small/fast animals because the
+    camera samples too coarsely, or because the AI can't keep up with
+    what it's given" -- turned out to be firmly the latter: every
+    configuration tried this release held at a ~98% drop rate
+    (259,211-259,732 sampled, only ~5,800-5,900 actually processed,
+    each time), confirming ai_engine's single MegaDetector-bound
+    thread, not sampling cadence or classification cost, is the fixed
+    throughput ceiling on this hardware (a 2018 Mac mini, quad-core
+    Intel i3 -- confirmed via `system_profiler SPHardwareDataType`,
+    no GPU acceleration path available).
+  - Motion-triggered sampling: camera_thread checks raw frames for
+    motion (cheap frame-differencing -- downsample, grayscale, blur,
+    absdiff, threshold, count changed fraction) and queues immediately
+    on a hit, additive to (not replacing) the existing frame_interval
+    cadence. New [DETECTION] motion_threshold (default 0.02).
+  - detection_queue is now a PriorityQueue: motion-triggered frames
+    are drained before frame_interval-only ones waiting alongside
+    them, via a (priority, seq, cam_id, frame) tuple with a
+    strictly-increasing, lock-protected seq tie-breaker -- without it,
+    a same-priority comparison would fall through to comparing frame
+    (a numpy array), which raises rather than failing cleanly. Verified
+    directly: a motion frame queued last still drains first, and 200
+    same-priority puts/gets with random array payloads raised nothing.
+    Known limitation, not fully solved by this alone: put_nowait() on
+    an already-full queue still drops the new frame regardless of
+    priority -- it reorders frames already queued, it doesn't evict a
+    lower-priority one to make room for a higher-priority one arriving
+    later.
+  - [DETECTION] motion_check_interval (default 3): throttles how often
+    the motion check itself runs. Added after a real regression was
+    observed once motion detection shipped -- checking literally every
+    raw frame, across every camera thread, continuously, measurably
+    competed with ai_engine for CPU on hardware with essentially no
+    headroom to spare (CPU idle time down to 5-10%, MegaDetector
+    inference time up from ~6s to 7-8s). Raised to 10 in production
+    after the default-3 setting only partially recovered it (~6-7%
+    idle) -- at that point (equal to frame_interval), motion checking
+    no longer catches anything frame_interval alone would've missed,
+    it only reprioritizes frames that were already going to be
+    sampled. Conclusion, backed by every one of these experiments
+    holding the same ~98% drop rate regardless of configuration: this
+    is a genuine hardware ceiling, not something further tunable away.
+  - Species classifier evaluation: raised species_threshold from 0.45
+    to 0.65 as a controlled experiment (isolating it from threshold_0)
+    to see whether classification cost was a meaningful contributor to
+    the drop rate -- it measured as statistically no different
+    (97.8% before, 97.75% after), which is what pointed the
+    investigation at MegaDetector's own inference cost instead.
+
+Fixed:
+  - A real production incident: MegaDetectorV6 crash-looped on
+    startup after a transient Zenodo timeout, because PytorchWildlife's
+    own cache-existence check for version="MDV6-yolov9-c" looks for
+    `MDV6b-yolov9-c.pt` (with a "b"), while wget.download() saves
+    under the filename it derives from the URL, `MDV6-yolov9-c.pt`
+    (no "b") -- an upstream naming mismatch that meant the "skip
+    download if already cached" check could never succeed, so every
+    restart re-downloaded from Zenodo regardless of what was already
+    on disk (visible as several near-identical, differently-named
+    ~51MB files accumulating in ~/.cache/torch/hub/checkpoints/ over
+    time). Fixed locally by placing a copy under the exact filename
+    the check looks for; no code change needed since this lives
+    entirely in a third-party package's cache directory.
+
+All configuration in this release is defaulted (motion_threshold,
+motion_check_interval) or was already present (species_threshold) --
+no existing ac.cfg needs changes to pick up this version.
+
 v0.12 - 2026-09-05
 ------------------
 
