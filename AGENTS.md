@@ -89,7 +89,7 @@ A maintenance worker that keeps the host system stable.
 * **Logs:** Not its concern — the daemon logs to stdout/stderr rather
   than a file it owns, so it has nothing to rotate itself. Rotation of
   those files is handled externally (macOS newsyslog, via
-  com.user.ac.newsyslog.conf), coordinated with a SIGUSR1 handler in
+  assets/com.user.ac.newsyslog.conf), coordinated with a SIGUSR1 handler in
   `__main__` (`_handle_log_reopen`) that reopens fresh file
   descriptors after each rotation. See README's Log Rotation section.
 

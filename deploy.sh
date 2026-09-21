@@ -3,10 +3,10 @@
 # --- CONFIGURATION ---
 PROJECT_DIR="/Users/maxim/nvr"
 PLIST_NAME="com.user.ac.plist"
-PLIST_SOURCE="$PROJECT_DIR/$PLIST_NAME"
+PLIST_SOURCE="$PROJECT_DIR/assets/$PLIST_NAME"
 PLIST_DEST="/Library/LaunchDaemons/$PLIST_NAME"
 NEWSYSLOG_NAME="com.user.ac.newsyslog.conf"
-NEWSYSLOG_SOURCE="$PROJECT_DIR/$NEWSYSLOG_NAME"
+NEWSYSLOG_SOURCE="$PROJECT_DIR/assets/$NEWSYSLOG_NAME"
 NEWSYSLOG_DEST="/etc/newsyslog.d/$NEWSYSLOG_NAME"
 # Pinned to an exact interpreter, not the floating `python3` symlink:
 # PytorchWildlife's yolov5 dependency doesn't work on Python 3.12 (see
@@ -53,7 +53,7 @@ else
     echo "[3/6] Log rotation config is already up to date."
 fi
 
-# 4. Ensure the interpreter is code-signed. com.user.ac.plist uses
+# 4. Ensure the interpreter is code-signed. assets/com.user.ac.plist uses
 # UserName to drop privileges to an unprivileged account; a completely
 # unsigned interpreter running as that dropped-privilege, session-less
 # daemon UID gets its outbound network silently blocked by macOS (root

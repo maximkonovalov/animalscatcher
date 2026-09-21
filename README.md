@@ -71,7 +71,7 @@ following sections are defined:
 
 `ac.cfg` holds RTSP and Telegram credentials in plaintext and must never be
 committed (it's covered by `.gitignore`). Since the daemon runs via launchd
-under whichever account `UserName` in `com.user.ac.plist` specifies (or root,
+under whichever account `UserName` in `assets/com.user.ac.plist` specifies (or root,
 if that key is absent), lock the file down to the owning user:
 
     chmod 600 ac.cfg
@@ -114,7 +114,7 @@ Run the Daemon:
 
     python3 ac.py
 
-Optional macOS Deployment: `com.user.ac.plist` and `deploy.sh`
+Optional macOS Deployment: `assets/com.user.ac.plist` and `deploy.sh`
 automate running this as a launchd LaunchDaemon on the machine this
 project was developed against. Both hardcode paths and a username
 specific to that deployment (`/Users/maxim/nvr` as the project
@@ -124,14 +124,14 @@ to) -- edit these to match your own machine and account before using
 them; they aren't meant to work as-is elsewhere.
 
 Monitor: Check stdout (or wherever your process supervisor captures it
--- e.g. StandardOutPath in com.user.ac.plist) or your Telegram channel
+-- e.g. StandardOutPath in assets/com.user.ac.plist) or your Telegram channel
 for the "The Animals Catcher is online" startup message. All of this
 daemon's own logging goes to stdout; nothing is written to a separate
 app log file.
 
 Log Rotation: since the daemon logs to stdout/stderr rather than a
 file it manages itself, this project doesn't rotate its own logs --
-`com.user.ac.newsyslog.conf` (installed to `/etc/newsyslog.d/` by
+`assets/com.user.ac.newsyslog.conf` (installed to `/etc/newsyslog.d/` by
 deploy.sh) hands that job to macOS's own newsyslog. Renaming a log
 file out from under a running process doesn't do anything useful on
 its own though: launchd only opens StandardOutPath/StandardErrorPath
@@ -141,7 +141,7 @@ signal_number config fields close that gap: after rotating, it sends
 SIGUSR1 to the PID in `ac.pid` (written at startup for this purpose),
 which `ac.py`'s own signal handler uses to reopen fresh file
 descriptors at the same two paths (via `AC_STDOUT_LOG`/`AC_STDERR_LOG`,
-set in com.user.ac.plist) -- no daemon restart needed.
+set in assets/com.user.ac.plist) -- no daemon restart needed.
 
 ## Species Classifier
 

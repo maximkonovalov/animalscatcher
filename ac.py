@@ -165,7 +165,7 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = ("rtsp_transport;tcp|"
 
 # --- 2. LOGGING ---
 # Writes to stdout rather than a separate log file: launchd already
-# captures stdout to its own file (StandardOutPath in com.user.ac.plist),
+# captures stdout to its own file (StandardOutPath in assets/com.user.ac.plist),
 # so a second, separately-rotated app log file was redundant. Rotation is
 # now whatever's applied to that file outside this process (e.g. macOS
 # newsyslog), not handled in-app.
@@ -590,7 +590,7 @@ def _handle_log_reopen(signum, frame):
     fds would keep appending to the now-renamed, archived file forever --
     neither launchd nor this process otherwise notices the rename, and
     nothing reopens StandardOutPath short of a full restart. Requires
-    AC_STDOUT_LOG/AC_STDERR_LOG (set in com.user.ac.plist) to know which
+    AC_STDOUT_LOG/AC_STDERR_LOG (set in assets/com.user.ac.plist) to know which
     paths to reopen; a plain `python3 ac.py` run without them is a no-op
     here."""
     sys.stdout.flush()
