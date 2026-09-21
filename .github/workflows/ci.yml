@@ -2,7 +2,13 @@ name: CI
 
 on:
   push:
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
 
 # Both jobs only checkout code, install dependencies, and run
 # lint/tests -- neither needs to write anything (no PR comments, no
