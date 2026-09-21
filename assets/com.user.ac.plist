@@ -35,7 +35,7 @@
     <!-- AC_STDOUT_LOG/AC_STDERR_LOG must be kept identical to
          StandardOutPath/StandardErrorPath above: ac.py's SIGUSR1
          handler reopens those two exact paths after an external log
-         rotation (see newsyslog.d/animalscatcher.conf), since it has
+         rotation (see assets/com.user.ac.newsyslog.conf), since it has
          no other way to know what launchd redirected its stdout/stderr
          to. -->
     <key>EnvironmentVariables</key>
