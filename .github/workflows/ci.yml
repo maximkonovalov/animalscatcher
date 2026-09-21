@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+# Both jobs only checkout code, install dependencies, and run
+# lint/tests -- neither needs to write anything (no PR comments, no
+# pushing, no releases). Least-privilege default instead of inheriting
+# the repo's (potentially read-write) default token permissions.
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
