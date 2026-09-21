@@ -2,7 +2,7 @@ I failed to find a ready to use solution that parses my home CCTV
 streams and detects wildlife and also I wanted to play with various
 ML/AI tools so I decided to re-invent my own wheel. This is a free
 and open source software under BSD license. I run it on my ancient
-Mac Mini 2018.
+Mac Mini 2018 but the code itself should run on any UNIX-like systems.
 
 Animals Catcher is a lightweight, AI-powered surveillance tool.
 It processes RTSP camera streams to detect and identify wildlife,
