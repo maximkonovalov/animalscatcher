@@ -41,6 +41,20 @@ numpy==1.26.4
 # 3.12, this same setuptools version instead breaks a different way --
 # see README System Requirements for why this project targets Python
 # 3.10.)
+#
+# Dependabot will keep flagging this version for CVE-2025-47273,
+# CVE-2024-6345, and CVE-2022-40897 (all High) plus CVE-2026-59890
+# (Moderate) -- checked each advisory individually rather than assuming:
+# all four require actually invoking setuptools' deprecated
+# PackageIndex/easy_install download machinery against an untrusted
+# package index (the first three), or building this project's own sdist
+# to publish it (the fourth). Nothing here does either -- this pin only
+# exists for yolov5's passive `import pkg_resources`, and deploy.sh's
+# `pip install -r requirements.txt` goes through pip's own modern
+# installer, never setuptools' legacy download path. Bumping past
+# ~80 to silence these would break the pkg_resources import above for a
+# security benefit that doesn't apply to how this project actually uses
+# setuptools -- don't bump this without re-solving that conflict first.
 setuptools==59.5.0
 
 # PytorchWildlife's own package metadata doesn't declare these, but its
