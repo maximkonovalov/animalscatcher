@@ -14,6 +14,8 @@ and then performs taxonomic classification to identify specific animal species.
 Developed with [Claude](https://claude.com), Anthropic's AI assistant,
 using Claude Code and the Claude Sonnet 5 model.
 
+![Sample detection: two mule deer identified by the two-stage AI pipeline, with species and confidence labels](assets/sample-detection.jpg)
+
 ## Core Features
 
 Two-Stage AI Pipeline:
