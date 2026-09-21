@@ -1,0 +1,36 @@
+name: Auto-close failing Dependabot PRs
+
+# Triggered by the CI workflow's own completion (not `pull_request`
+# directly) because GitHub caps GITHUB_TOKEN to read-only for workflows
+# triggered by Dependabot's own PRs, specifically to stop a malicious
+# dependency bump from getting write access -- a plain `pull_request`
+# trigger here would silently fail to close anything. `workflow_run`
+# runs in the base repo's context instead, so it isn't subject to that
+# restriction.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close-if-failed:
+    # Scoped narrowly on purpose: only a failed run that (a) actually
+    # came from a pull_request, and (b) whose PR was opened by
+    # dependabot[bot] specifically (checked below) -- this must never
+    # touch a human's PR just because its CI happens to be red.
+    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close the PR if it's a failing Dependabot bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh api "/repos/${{ github.repository }}/commits/${{ github.event.workflow_run.head_sha }}/pulls" --jq '.[0].number')
+          PR_AUTHOR=$(gh api "/repos/${{ github.repository }}/pulls/$PR_NUMBER" --jq '.user.login')
+          if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+            gh pr close "$PR_NUMBER" --repo "${{ github.repository }}" \
+              --comment "Auto-closed: CI failed on this dependency bump."
+          fi
