@@ -1,3 +1,7 @@
+I failed to find a ready to use solution that parses my home CCTV
+streams and detects wildlife and also I wanted to play with various
+ML/AI tools so I decided to re-invent my own wheel.
+
 Animals Catcher is a lightweight, AI-powered surveillance tool.
 It processes RTSP camera streams to detect and identify wildlife,
 people, and vehicles in real-time.
