@@ -35,7 +35,7 @@ requests==2.34.2
 # resolver can't drift here again.
 numpy==1.26.4
 
-# setuptools==59.5.0: yolov5 (a transitive dependency via PytorchWildlife)
+# setuptools==83.0.0: yolov5 (a transitive dependency via PytorchWildlife)
 # imports pkg_resources at module level. Modern setuptools (~80+) removes
 # pkg_resources entirely; this older setuptools still has it. (On Python
 # 3.12, this same setuptools version instead breaks a different way --
@@ -55,7 +55,7 @@ numpy==1.26.4
 # ~80 to silence these would break the pkg_resources import above for a
 # security benefit that doesn't apply to how this project actually uses
 # setuptools -- don't bump this without re-solving that conflict first.
-setuptools==59.5.0
+setuptools==83.0.0
 
 # PytorchWildlife's own package metadata doesn't declare these, but its
 # top-level __init__.py unconditionally imports a bioacoustics submodule
