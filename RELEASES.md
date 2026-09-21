@@ -1,6 +1,72 @@
 Release History
 ===============
 
+v0.14 - 2026-09-21
+------------------
+
+Repo hygiene and CI security, not detection changes: closed out every
+outstanding CodeQL finding, automated Dependabot PR triage, documented
+why the flagged setuptools CVE alerts don't apply here, and moved
+supplemental/platform-specific files out of the repo root into a new
+assets/ folder.
+
+Added:
+  - assets/ folder for supplemental and macOS-specific files, keeping
+    the repo root down to code, docs, and tooling config. Moved into
+    it via `git mv` (history preserved): launchctl.txt,
+    com.user.ac.plist, com.user.ac.newsyslog.conf. Every reference to
+    these three files was updated across README.md, AGENTS.md, ac.py,
+    and deploy.sh's PLIST_SOURCE/NEWSYSLOG_SOURCE (the
+    /Library/LaunchDaemons and /etc/newsyslog.d install *destinations*
+    are unchanged -- those are system paths, unrelated to repo layout).
+  - assets/sample-detection.jpg, embedded in the README: a real
+    detection frame (two mule deer, species + confidence labels)
+    showing the two-stage pipeline's actual output. EXIF-stripped
+    before committing (had ResolutionUnit/Orientation/XResolution
+    etc., no GPS data).
+  - .github/workflows/auto-close-dependabot.yml: closes a Dependabot
+    PR automatically if its CI run fails. Triggered by the CI
+    workflow's own completion (workflow_run), not `pull_request`
+    directly -- GitHub caps GITHUB_TOKEN to read-only for
+    Dependabot-authored PRs specifically, which would've made a direct
+    `pull_request` trigger silently unable to close anything. Scoped
+    narrowly: only closes if the failing PR's author is literally
+    `dependabot[bot]`.
+  - requirements.txt now documents why Dependabot's four setuptools
+    CVE alerts (CVE-2025-47273, CVE-2024-6345, CVE-2022-40897,
+    CVE-2026-59890) don't apply here -- all four require invoking
+    setuptools' legacy PackageIndex/easy_install download path, or
+    building this project's own sdist to publish it, neither of which
+    this project does; the pin exists only for yolov5's passive
+    `import pkg_resources`.
+  - A short motivation section at the top of the README (why this
+    project exists, the 2018 Mac Mini it runs on).
+
+Changed:
+  - CI (.github/workflows/ci.yml) now skips push/pull_request runs
+    where every changed file matches paths-ignore (**.md, LICENSE) --
+    a README or license edit no longer triggers a full lint+test run.
+    CodeQL itself is unaffected (it runs via GitHub's Default setup,
+    which has no workflow file to filter).
+  - ruff (dev-only) bumped 0.16.5 -> 0.16.7 (Dependabot PR #16,
+    reviewed and merged after CI passed clean).
+
+Fixed:
+  - CodeQL py/incomplete-url-substring-sanitization on the Telegram
+    API URLs: extracted TELEGRAM_API_BASE as a named constant instead
+    of embedding the domain literal in each f-string. Was already safe
+    (the token only ever lands in the path, never able to affect the
+    host) -- this just makes that clearer to both readers and static
+    analysis.
+  - CodeQL missing-permissions warnings on ci.yml's lint and test
+    jobs: added a workflow-level `permissions: contents: read`
+    (neither job writes anything -- no PR comments, no pushing, no
+    releases).
+  - com.user.ac.plist's own internal comment referenced
+    newsyslog.d/animalscatcher.conf, which was never the actual
+    installed filename (com.user.ac.newsyslog.conf, per deploy.sh) --
+    corrected, and updated to point at its new assets/ location.
+
 v0.13 - 2026-09-17
 ------------------
 
