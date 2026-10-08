@@ -66,4 +66,4 @@ setuptools==59.5.0
 soundfile==0.14.0
 librosa==0.11.0
 numba==0.60.0
-llvmlite==0.43.0
+llvmlite==0.50.0
