@@ -49,9 +49,9 @@ The core "brain" of the system. Before loading any model, it clears out
 any `MDV6*.tmp` partial download left behind in the working directory by
 a previous, interrupted weights download (MegaDetectorV6 fetches its
 weights via the `wget` package, which doesn't clean these up itself).
-It then monitors the `detection_queue` and processes frames using a
-First-In-First-Out (FIFO) logic; each frame is handed to
-`_process_frame()`, which does the actual detection, classification,
+It then drains the `detection_queue` via `detection_queue.get()` in
+priority order, not FIFO (see Camera Agent above); each frame is handed
+to `_process_frame()`, which does the actual detection, classification,
 and alerting.
 1. **Detection:** Uses **MegaDetectorV6** for Animals, People, or
    Vehicles. Every raw detection is logged with its confidence (before
@@ -117,8 +117,10 @@ A maintenance worker that keeps the host system stable.
   (missing file, missing key, or an invalid value) instead of letting a
   bad `ac.cfg` surface as a raw traceback with no log record.
 * **Graceful Shutdown:** `SIGTERM`/`SIGINT` are caught to log the shutdown
-  and drain `photo_executor` before exiting, rather than being killed
-  mid-write.
+  and cancel any queued-but-unstarted Telegram uploads
+  (`photo_executor.shutdown(wait=False, cancel_futures=True)`) so a
+  backlog doesn't hold up exit -- though an upload already in flight can
+  still delay it briefly.
 * **Log Reopening:** `SIGUSR1` is caught (`_handle_log_reopen`) to
   `dup2()` fresh file descriptors onto stdout/stderr after an external
   tool (newsyslog) rotates the files launchd redirects them to --

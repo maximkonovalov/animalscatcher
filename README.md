@@ -78,7 +78,10 @@ if that key is absent), lock the file down to the owning user:
 
 ## Installation & Usage
 
-Deploy Code: Place ac.py and ac.cfg in a working directory.
+Deploy Code: Place ac.py and ac.cfg in a working directory. By default
+`ac.py` looks for `ac.cfg` next to itself; set `AC_CONFIG_PATH` to point
+it at a config file somewhere else instead (e.g. to run more than one
+instance from the same checkout).
 
 Install Dependencies:
 
@@ -203,7 +206,12 @@ Install the pinned dev tooling, lint, and run the tests before committing
 
     pip install -r requirements-dev.txt
     ruff check ac.py
-    pip install -r requirements.txt   # tests import ac.py directly
+
+Tests import `ac.py` directly, so they need the same runtime
+dependencies as a real deployment -- follow the CPU-only torch install,
+`pip install -r requirements.txt`, and opencv-python-headless
+force-reinstall steps from Installation & Usage above, then:
+
     pytest tests/
 
 `ruff.toml` pins the project's actual lint rule selection (and
