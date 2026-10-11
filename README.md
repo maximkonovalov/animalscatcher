@@ -196,6 +196,62 @@ summary_engine: Sends periodic health reports and detection stats to Telegram.
 
 cleanup_engine: Keeps the system lean by purging old data.
 
+6 daemon threads run for the life of the process: one ai_engine, one
+summary_engine, one cleanup_engine, and one camera_thread per configured
+channel (4, 5, 6). The main thread just starts them and idles.
+
+The diagram below traces a single frame from capture through to a
+Telegram alert, and shows summary_engine and cleanup_engine running
+independently alongside it, reading/writing the same stats dict and
+output folder:
+
+```mermaid
+flowchart TD
+    C4["camera_thread(4)"] -->|sampled frame| Q
+    C5["camera_thread(5)"] -->|sampled frame| Q
+    C6["camera_thread(6)"] -->|sampled frame| Q
+
+    Q[("detection_queue<br/>priority: motion frames before frame_interval frames")] --> AI(["ai_engine"])
+
+    AI --> MD["Stage 1: MegaDetector<br/>per-class threshold filter (Animal/Person/Vehicle)"]
+    MD -->|"class Animal, conf > species_threshold"| SC["Stage 2: species classifier<br/>(DFNE or SpeciesNet)"]
+    MD -->|"class Person / Vehicle"| Gate
+    SC --> Gate["Alert decision gate<br/>(two-frame latch, see below)"]
+
+    Gate -->|pass| Snap["write annotated snapshot"]
+    Gate -->|fail| NoOp["no alert"]
+    Snap --> TG(["Telegram photo alert<br/>(async via photo_executor)"])
+    Snap --> Out[("base_output_folder")]
+
+    Stats[("stats dict")]
+    C4 -.-> Stats
+    C5 -.-> Stats
+    C6 -.-> Stats
+    AI -.-> Stats
+
+    Sum["summary_engine<br/>(every summary_interval hours)"] -->|health + detection report| TG2(["Telegram report"])
+    Stats -.->|read, then reset| Sum
+
+    Clean["cleanup_engine<br/>(every cleanup_interval hours)"] -->|delete files older than max_age_days| Out
+```
+
+The alert decision gate isn't a single-frame decision: a class has to
+show up on two consecutive processed frames for the same (cam_id, class)
+pair, with cooldown elapsed and the box not flagged as static/stuck,
+before Telegram actually gets a photo. Cooldown and the static filter
+are tracked independently per camera/class pair, not globally:
+
+```mermaid
+flowchart TD
+    A["Detection for (cam_id, class)<br/>on this processed frame"] --> B{"Was this (cam_id, class)<br/>also seen on the PREVIOUS<br/>processed frame?"}
+    B -->|no| L["Latch only: record seen,<br/>no alert yet"]
+    B -->|yes| C{"time since last_det[cam_id, class]<br/>> cooldown?"}
+    C -->|no| D["Suppressed: still in cooldown"]
+    C -->|yes| E{"box position vs. last_box<br/>within static_tolerance?"}
+    E -->|yes, static/stuck box| F["Filtered: logged, no alert"]
+    E -->|no, box moved| G["Real detection: update stats,<br/>last_box and last_det;<br/>snapshot + Telegram alert"]
+```
+
 Note: On the first execution, the system will download approximately
 300MB of AI model weights. Ensure a stable connection is available.
 
