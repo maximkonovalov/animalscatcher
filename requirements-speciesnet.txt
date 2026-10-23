@@ -15,4 +15,4 @@
 # opencv-python leak documented in requirements.txt/README/deploy.sh --
 # re-run that project's uninstall/force-reinstall opencv-python-headless
 # fix after installing this file, same as after requirements.txt alone.
-speciesnet==5.0.5
+speciesnet==5.0.6
