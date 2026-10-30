@@ -1,6 +1,65 @@
 Release History
 ===============
 
+v0.15 - 2026-10-30
+------------------
+
+Cameras other than the Hikvision-style DVR this was originally written
+for can now be used without editing ac.py. Also rolls up the
+documentation and tooling changes made since v0.14.
+
+Added:
+  - [CAMERA] channels and rtsp_path in ac.cfg. Both were hardcoded in
+    ac.py: channels 4, 5 and 6, and the URL path
+    /Streaming/Channels/{channel}02 (a Hikvision-style recorder's
+    sub-stream), so any other camera meant editing the source. channels
+    is a comma-separated list of integers, one capture thread and one
+    snapshot folder per entry. rtsp_path is everything after host:port
+    with {channel} replaced per channel; it's plain str.format, so
+    {channel:02d} gives zero-padded numbers and a query-string path like
+    /cam/realmonitor?channel={channel}&subtype=1 works as written. A
+    standalone camera with one fixed path sets channels = 1 and
+    rtsp_path = /stream2; the lone number then only names its folder.
+    Both keys are optional and default to the old hardcoded values, so
+    no existing ac.cfg needs changing. Bad values fail at startup with a
+    SystemExit that names the key, rather than inside a camera thread
+    later: non-integer, empty or repeated channels, and an rtsp_path
+    that doesn't start with '/', isn't a valid template ({channel} is
+    the only placeholder), or lacks {channel} while several channels are
+    listed (N threads would otherwise decode one stream and alert N
+    times per detection).
+  - README "Camera Setup" section: how the URL is assembled, the
+    defaults, example configs (Hikvision-style recorder, Dahua/Amcrest-
+    style query-string URL, a standalone camera), the limitation that all
+    channels share one ip/port/login, and an ffprobe command for
+    checking a URL before starting the daemon. ac.cfg.example documents
+    both keys too.
+  - tests/test_camera_thread.py and config tests for both keys. The
+    default URL is asserted equal to the exact string v0.14 hardcoded,
+    and camera_thread is driven against a fake capture to confirm it
+    really opens the configured URL.
+  - Two Mermaid diagrams in the README's Project Structure section: a
+    frame's path from capture to Telegram alert, and the alert gate's
+    two-frame latch, cooldown and static-box filter.
+  - Project-level Claude Code subagent roles in .claude/agents/
+    (architect, developer, qa, technical-writer), each briefed with this
+    repo's conventions.
+
+Changed:
+  - Snapshot folder and thread names now come from one zero-padding
+    helper. cam04, cam05 and cam06 are unchanged; channel 10 becomes
+    cam10 rather than the cam010 the old f"cam0{n}" would have made.
+  - Doc corrections: AGENTS.md no longer says ai_engine drains the queue
+    FIFO (it's priority-ordered) or that shutdown drains photo_executor
+    (it cancels queued-but-unstarted uploads); README now documents the
+    AC_CONFIG_PATH override and the CI steps its Development section
+    skipped.
+  - ruff (dev-only) 0.16.7 -> 0.17.1, via Dependabot PRs #18, #19, #21,
+    #24 and #25.
+  - speciesnet (the optional requirements-speciesnet.txt extra) 5.0.5 ->
+    5.0.6, Dependabot PR #26. CI doesn't install that extra, so this
+    bump isn't covered by the test run.
+
 v0.14 - 2026-09-21
 ------------------
 
