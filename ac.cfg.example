@@ -3,6 +3,15 @@ user = <username>
 pass = <password>
 ip = 192.168.xx.xx
 port = 8554
+# RTSP channel numbers to stream, comma-separated -- one capture thread
+# and one snapshot folder (cam04, cam05, ...) per entry. The defaults for
+# this and rtsp_path below are the Hikvision-style DVR layout this
+# project was written for; see README's Camera Setup section for others.
+# channels = 4,5,6
+# URL path after ip:port. {channel} is replaced with each number above
+# (format specs work too, e.g. {channel:02d}) and is required if more
+# than one channel is listed.
+# rtsp_path = /Streaming/Channels/{channel}02
 
 [TELEGRAM]
 token = <token>

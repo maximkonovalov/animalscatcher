@@ -186,6 +186,81 @@ def test_invalid_classifier_value_raises_friendly_systemexit(tmp_path):
     assert "ac.cfg.example" in message
 
 
+def with_camera_keys(extra):
+    """VALID_CFG with extra lines appended to its [CAMERA] section."""
+    return VALID_CFG.replace("port = 8554\n", f"port = 8554\n{extra}")
+
+
+def test_channels_and_rtsp_path_default_to_the_original_hardcoded_layout(
+        tmp_path):
+    # These keys postdate every existing ac.cfg, and the defaults must be
+    # exactly what v0.14 hardcoded -- otherwise upgrading silently points
+    # an existing deployment at different (or no) streams.
+    assert "channels" not in VALID_CFG
+    assert "rtsp_path" not in VALID_CFG
+
+    cfg = ac.load_config(write_cfg(tmp_path, VALID_CFG))
+
+    assert cfg["channels"] == [4, 5, 6]
+    assert cfg["rtsp_path"] == "/Streaming/Channels/{channel}02"
+
+
+def test_custom_channels_and_rtsp_path_are_parsed(tmp_path):
+    # Whitespace and a trailing comma are tolerated, and a query-string
+    # path (with its own '=' and '&') survives configparser intact.
+    path = write_cfg(tmp_path, with_camera_keys(
+        "channels = 1, 2 ,3,\n"
+        "rtsp_path = /cam/realmonitor?channel={channel}&subtype=1\n"))
+
+    cfg = ac.load_config(path)
+
+    assert cfg["channels"] == [1, 2, 3]
+    assert cfg["rtsp_path"] == "/cam/realmonitor?channel={channel}&subtype=1"
+
+
+def test_single_channel_may_use_a_fixed_path_without_placeholder(tmp_path):
+    # A standalone camera has one fixed stream path and no channel
+    # concept; the lone channel number then only names its folder.
+    path = write_cfg(tmp_path, with_camera_keys(
+        "channels = 1\nrtsp_path = /stream2\n"))
+
+    cfg = ac.load_config(path)
+
+    assert cfg["channels"] == [1]
+    assert cfg["rtsp_path"] == "/stream2"
+
+
+def test_zero_padded_format_spec_in_rtsp_path_is_accepted(tmp_path):
+    path = write_cfg(tmp_path, with_camera_keys(
+        "channels = 1,2,10\nrtsp_path = /live_{channel:02d}_main\n"))
+
+    cfg = ac.load_config(path)
+
+    assert cfg["channels"] == [1, 2, 10]
+
+
+@pytest.mark.parametrize("extra, key", [
+    ("channels = four,five\n", "channels"),
+    ("channels =\n", "channels"),
+    ("channels = 4,5,4\n", "channels"),
+    ("rtsp_path = stream1\n", "rtsp_path"),
+    ("rtsp_path = /live/{ch}\n", "rtsp_path"),
+    ("rtsp_path = /live/{channel\n", "rtsp_path"),
+    # Default channels are 4,5,6; without a placeholder all three would
+    # open the same stream.
+    ("rtsp_path = /live/main\n", "rtsp_path"),
+])
+def test_invalid_camera_keys_raise_friendly_systemexit(tmp_path, extra, key):
+    path = write_cfg(tmp_path, with_camera_keys(extra))
+
+    with pytest.raises(SystemExit) as exc_info:
+        ac.load_config(path)
+
+    message = str(exc_info.value)
+    assert key in message
+    assert "ac.cfg.example" in message
+
+
 def test_unreadable_or_missing_file_error_is_not_a_bare_traceback(tmp_path):
     # Sanity check that load_config never lets a raw configparser.Error
     # or ValueError escape uncaught -- always SystemExit.

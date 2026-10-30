@@ -19,7 +19,12 @@ The system consists of four primary agent types running in parallel:
 ## 2. Detailed Workflows
 
 ### Camera Agent (`camera_thread`)
-Each camera defined in the startup sequence spawns its own dedicated thread.
+Each channel listed in `[CAMERA] channels` spawns its own dedicated thread.
+* **Stream URL:** `_rtsp_url()` builds it from `ip`, `port`, the
+  (percent-encoded) login, and `rtsp_path` with `{channel}` filled in;
+  `_cam_id()` names the snapshot folder and thread (`cam04`, ...). The
+  URL embeds the credentials, so it goes straight to `cv2.VideoCapture`
+  and is never logged. See README's Camera Setup section.
 * **Resilience:** If a stream drops, the agent enters a retry loop.
 * **Sampling:** To save CPU, only every $N$-th frame (via `frame_interval`)
   is sent to the shared `detection_queue` -- *plus* any frame where

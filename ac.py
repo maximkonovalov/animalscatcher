@@ -21,9 +21,6 @@ from PytorchWildlife.models import detection as pw_detection
 # --- 0. VERSIONING ---
 VERSION = "0.14"
 
-# RTSP channel numbers to monitor (see camera_thread / STARTUP).
-CAMERA_CHANNELS = [4, 5, 6]
-
 # --- 1. LOAD CONFIGURATION ---
 def load_config(path):
     """Parse and validate ac.cfg, returning a dict of typed settings.
@@ -100,6 +97,44 @@ def load_config(path):
             'max_age_days': parser.getint('CLEANUP', 'max_age_days'),
             'cleanup_interval': parser.getint('CLEANUP', 'cleanup_interval'),
         }
+        # Optional, defaulted: the defaults are the layout this project
+        # was originally hardcoded for (a Hikvision-style DVR with cameras
+        # on channels 4-6, each read from its sub-stream), so an existing
+        # ac.cfg keeps working unchanged. rtsp_path is everything after
+        # host:port; str.format fills {channel}, so {channel:02d} works
+        # for recorders whose paths expect zero-padded numbers.
+        raw_channels = parser.get('CAMERA', 'channels', fallback='4,5,6')
+        rtsp_path = parser.get('CAMERA', 'rtsp_path',
+                               fallback='/Streaming/Channels/{channel}02')
+        try:
+            channels = [int(c) for c in raw_channels.split(',') if c.strip()]
+        except ValueError:
+            raise ValueError("channels must be comma-separated integers, "
+                             f"got {raw_channels!r}") from None
+        if not channels:
+            raise ValueError("channels must list at least one channel number")
+        if len(set(channels)) != len(channels):
+            raise ValueError(f"channels lists a number twice: {channels}")
+        if not rtsp_path.startswith('/'):
+            raise ValueError(f"rtsp_path must start with '/', "
+                             f"got {rtsp_path!r}")
+        try:
+            urls = {rtsp_path.format(channel=c) for c in channels}
+        except Exception as e:
+            # str.format raises a different type for each kind of broken
+            # template ({typo}: KeyError, {}: IndexError, {channel:x}:
+            # ValueError, ...); here they all just mean a bad rtsp_path.
+            raise ValueError(f"rtsp_path {rtsp_path!r} is not a valid "
+                             f"template, {{channel}} is the only "
+                             f"placeholder allowed: {e!r}") from None
+        if len(urls) != len(channels):
+            # Every channel would open the same stream: N threads
+            # decoding one camera and alerting N times per detection.
+            raise ValueError(f"rtsp_path {rtsp_path!r} must contain "
+                             "{channel} when more than one channel is "
+                             "configured")
+        cfg['channels'] = channels
+        cfg['rtsp_path'] = rtsp_path
         if cfg['classifier'] not in ('dfne', 'speciesnet'):
             raise ValueError(
                 f"classifier must be 'dfne' or 'speciesnet', "
@@ -118,6 +153,8 @@ USER = _cfg['user']
 PASS = _cfg['pass']
 IP = _cfg['ip']
 PORT = _cfg['port']
+CAMERA_CHANNELS = _cfg['channels']
+RTSP_PATH = _cfg['rtsp_path']
 TELEGRAM_TOKEN = _cfg['telegram_token']
 TELEGRAM_CHAT_ID = _cfg['telegram_chat_id']
 # A named constant rather than a literal embedded in each f-string below:
@@ -326,12 +363,26 @@ def _frame_changed(prev_gray, frame, threshold):
     changed_fraction = cv2.countNonZero(thresh) / thresh.size
     return changed_fraction > threshold, gray
 
-def camera_thread(cam_num):
-    """Maintains RTSP connection and samples frames for the AI."""
-    cam_id = f"cam0{cam_num}"
+def _cam_id(channel):
+    """Zero-padded so the default channels (4, 5, 6) keep their original
+    cam04/cam05/cam06 snapshot folders, and 10+ stay tidy (cam10, not
+    cam010)."""
+    return f"cam{channel:02d}"
+
+def _rtsp_url(channel):
+    """RTSP URL for one channel. Credentials are percent-encoded, since a
+    raw @, :, / or # in a username/password would be parsed as URL
+    structure. The result embeds those credentials, so it must never be
+    logged -- hand it straight to cv2.VideoCapture."""
     user = quote(USER, safe='')
     password = quote(PASS, safe='')
-    url = f"rtsp://{user}:{password}@{IP}:{PORT}/Streaming/Channels/{cam_num}02"
+    return (f"rtsp://{user}:{password}@{IP}:{PORT}"
+            f"{RTSP_PATH.format(channel=channel)}")
+
+def camera_thread(cam_num):
+    """Maintains RTSP connection and samples frames for the AI."""
+    cam_id = _cam_id(cam_num)
+    url = _rtsp_url(cam_num)
     os.makedirs(os.path.join(BASE_OUTPUT_FOLDER, cam_id), exist_ok=True)
     cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
     f_idx = 0
@@ -630,7 +681,7 @@ if __name__ == "__main__":
     for t in [ai_engine, summary_engine, cleanup_engine]:
         threading.Thread(target=t, name=t.__name__, daemon=True).start()
     for n in CAMERA_CHANNELS:
-        threading.Thread(target=camera_thread, args=(n,), name=f"cam0{n}",
+        threading.Thread(target=camera_thread, args=(n,), name=_cam_id(n),
                          daemon=True).start()
         time.sleep(2)
     while True:

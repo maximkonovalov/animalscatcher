@@ -34,7 +34,10 @@ setup/review rather than assuming a clean install:
 changes rather than starting a parallel one:
 
 - `test_config.py` — `load_config()` validation (missing file/section/key,
-  invalid numeric values).
+  invalid numeric values, the `channels`/`rtsp_path` camera keys).
+- `test_camera_thread.py` — RTSP URL construction (`_rtsp_url()`, incl.
+  credential escaping), `_cam_id()` naming, and `camera_thread` opening
+  the configured URL.
 - `test_detection_queue.py` — `PriorityQueue` ordering and the
   `(priority, seq, cam_id, frame)` tie-breaking that exists specifically so
   two same-priority entries never fall through to comparing a numpy frame.

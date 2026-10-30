@@ -63,7 +63,7 @@ following sections are defined:
 
 | Section   | Keys | Description |
 | :---      | :--- |        :--- |
-| CAMERA    | user, pass, ip, port | RTSP credentials and network address. |
+| CAMERA    | user, pass, ip, port, channels, rtsp_path | RTSP credentials, network address, and which streams to open (see Camera Setup below). |
 | TELEGRAM  | token, chat_id | Bot API token and target chat ID for alerts. |
 | PATHS     | base_output_folder | Storage location for snapshots. |
 | DETECTION | threshold_0-2, cooldown, frame_interval, motion_threshold, motion_check_interval, summary_interval, species_threshold, static_tolerance, classifier, speciesnet_model, crop_padding | Confidence thresholds, alert frequency, and species classifier choice. |
@@ -75,6 +75,49 @@ under whichever account `UserName` in `assets/com.user.ac.plist` specifies (or r
 if that key is absent), lock the file down to the owning user:
 
     chmod 600 ac.cfg
+
+## Camera Setup
+
+Each stream is opened as `rtsp://<user>:<pass>@<ip>:<port><rtsp_path>`:
+`user`, `pass`, `ip` and `port` come from `[CAMERA]` (the credentials are
+URL-escaped for you), and `rtsp_path` is the rest of the URL, with
+`{channel}` replaced by each number in `channels`. The daemon runs one
+capture thread per listed channel and saves its snapshots under a folder
+named after it (`cam04`, `cam05`, ...).
+
+Both keys are optional. Their defaults are the layout this project was
+originally hardcoded for -- a Hikvision-style DVR with cameras on
+channels 4, 5 and 6, each read from its sub-stream (`N02`, the
+lower-resolution one, which is cheaper to decode) -- so an existing
+`ac.cfg` keeps working unchanged. For other setups, for example:
+
+    # Hikvision-style recorder, channels 1-4, full-resolution main streams
+    channels = 1,2,3,4
+    rtsp_path = /Streaming/Channels/{channel}01
+
+    # Dahua/Amcrest-style, query-string URL, sub-stream
+    channels = 1,2
+    rtsp_path = /cam/realmonitor?channel={channel}&subtype=1
+
+    # One standalone camera with a fixed stream path: the single channel
+    # number only names the snapshot folder (cam01)
+    channels = 1
+    rtsp_path = /stream2
+
+These illustrate the pattern; they aren't a compatibility list -- look
+up the RTSP path in your camera's or recorder's manual. `{channel}`
+accepts Python format specs, so `{channel:02d}` gives zero-padded numbers
+(`01`, `02`, ...) for recorders whose paths expect them. `rtsp_path` must
+start with `/`, and must contain `{channel}` whenever more than one
+channel is listed (otherwise every thread would open the same stream);
+`ac.py` refuses to start, naming the key, if either rule is broken. All
+channels share one `ip`, `port` and login, so cameras on different hosts
+or with different credentials can't be mixed in a single instance.
+
+To check a URL before starting the daemon, try it with `ffprobe` (the
+daemon also forces RTSP over TCP):
+
+    ffprobe -rtsp_transport tcp "rtsp://user:pass@192.168.1.10:554/Streaming/Channels/102"
 
 ## Installation & Usage
 
@@ -190,15 +233,17 @@ taxa.
 
 ai_engine: The brain of the system; handles detection and classification.
 
-camera_thread: Manages RTSP streams for channels 4, 5, and 6.
+camera_thread: Manages one RTSP stream per channel in `[CAMERA] channels`
+(see Camera Setup above).
 
 summary_engine: Sends periodic health reports and detection stats to Telegram.
 
 cleanup_engine: Keeps the system lean by purging old data.
 
-6 daemon threads run for the life of the process: one ai_engine, one
-summary_engine, one cleanup_engine, and one camera_thread per configured
-channel (4, 5, 6). The main thread just starts them and idles.
+Three engine threads (ai_engine, summary_engine, cleanup_engine) plus one
+camera_thread per configured channel run for the life of the process --
+6 in total with the default channels (4, 5, 6). The main thread just
+starts them and idles.
 
 The diagram below traces a single frame from capture through to a
 Telegram alert, and shows summary_engine and cleanup_engine running
@@ -207,9 +252,7 @@ output folder:
 
 ```mermaid
 flowchart TD
-    C4["camera_thread(4)"] -->|sampled frame| Q
-    C5["camera_thread(5)"] -->|sampled frame| Q
-    C6["camera_thread(6)"] -->|sampled frame| Q
+    C["camera_thread<br/>(one per configured channel)"] -->|sampled frame| Q
 
     Q[("detection_queue<br/>priority: motion frames before frame_interval frames")] --> AI(["ai_engine"])
 
@@ -224,9 +267,7 @@ flowchart TD
     Snap --> Out[("base_output_folder")]
 
     Stats[("stats dict")]
-    C4 -.-> Stats
-    C5 -.-> Stats
-    C6 -.-> Stats
+    C -.-> Stats
     AI -.-> Stats
 
     Sum["summary_engine<br/>(every summary_interval hours)"] -->|health + detection report| TG2(["Telegram report"])
