@@ -5,7 +5,8 @@ v0.15 - 2026-10-30
 ------------------
 
 Cameras other than the Hikvision-style DVR this was originally written
-for can now be used without editing ac.py. Also rolls up the
+for can now be used without editing ac.py. Also fixes a torch version
+mismatch that broke Linux installs and CI, and rolls up the
 documentation and tooling changes made since v0.14.
 
 Added:
@@ -59,6 +60,24 @@ Changed:
   - speciesnet (the optional requirements-speciesnet.txt extra) 5.0.5 ->
     5.0.6, Dependabot PR #26. CI doesn't install that extra, so this
     bump isn't covered by the test run.
+
+Fixed:
+  - A mismatched torch/torchaudio pair broke Linux installs and CI.
+    PytorchWildlife declares torch, torchvision and torchaudio
+    unpinned, and the README (and CI) installed CPU torch first, also
+    unpinned. It floated to torch 2.12.1 while torchaudio resolved
+    separately from PyPI as 2.11.1 (whose metadata only asks for
+    torch>=2.11), and torchaudio's compiled library can't load against
+    the wrong torch ("undefined symbol" in libtorchaudio.so).
+    PytorchWildlife imports torchaudio unconditionally, so `import ac`
+    failed in every test module: CI's test job died at pytest
+    collection on every run from Oct 29, including a ruff-only
+    Dependabot bump, which the auto-close workflow then closed (#28).
+    torch==2.2.2, torchvision==0.17.2 and torchaudio==2.2.2 are now
+    pinned together in requirements.txt, CI's CPU-torch step reads its
+    pins from there, and the README's install command matches. That's
+    the set this project is developed and deployed against (Intel Macs
+    can't install anything newer), so the Mac mini was never affected.
 
 v0.14 - 2026-09-21
 ------------------

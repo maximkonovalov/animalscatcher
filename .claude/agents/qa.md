@@ -29,6 +29,11 @@ setup/review rather than assuming a clean install:
   (no GUI functions) actually matters for what you're testing.
 - Linux/Windows `pip install` grabs torch's CUDA build by default
   (multi-GB); this project is CPU-only.
+- `torch`, `torchvision` and `torchaudio` must stay pinned together (see
+  `requirements.txt`). Unpinned, a Linux install resolved torch 2.12.1
+  next to torchaudio 2.11.1 and `import PytorchWildlife` failed, so every
+  test died at collection -- pytest exit code 2 rather than 1, meaning
+  "never ran", not "failed".
 
 **Existing coverage, by file** — extend the matching file for related
 changes rather than starting a parallel one:
