@@ -128,13 +128,17 @@ instance from the same checkout).
 
 Install Dependencies:
 
-`PytorchWildlife` pulls in `torch` as a transitive dependency. On Linux
-and Windows, a plain `pip install` grabs the CUDA-enabled build by
-default, which is several gigabytes even though this project only runs
-on CPU. Install the CPU-only build first to avoid that download
-(macOS wheels are already CPU/MPS-only, so this step is unnecessary there):
+`PytorchWildlife` pulls in `torch`, `torchvision` and `torchaudio` as
+transitive dependencies. On Linux and Windows, a plain `pip install`
+grabs the CUDA-enabled build by default, which is several gigabytes even
+though this project only runs on CPU. Install the CPU-only builds first
+to avoid that download (macOS wheels are already CPU/MPS-only, so this
+step is unnecessary there). Use the versions pinned in requirements.txt:
+the three have to match each other (an unpinned install breaks -- see
+the comment there), and matching requirements.txt also keeps the next
+step from swapping these CPU builds for PyPI's CUDA ones:
 
-    pip install torch --index-url https://download.pytorch.org/whl/cpu
+    pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cpu
 
 Then install the pinned project dependencies:
 

@@ -54,10 +54,16 @@ jobs:
           python-version: "3.10"
 
       # Linux defaults to torch's CUDA build (multi-GB); this project
-      # only runs on CPU, so install the CPU-only wheel first (same
-      # guidance as the README's install instructions).
+      # only runs on CPU, so install the CPU-only wheels first (same
+      # guidance as the README's install instructions). The versions are
+      # read from requirements.txt so both steps agree: unpinned, this
+      # step floated to the newest torch while torchaudio resolved
+      # separately from PyPI, and the mismatched pair failed to import
+      # (see the torch pins' comment in requirements.txt).
       - name: Install CPU-only torch
-        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+        run: |
+          TORCH_PINS=$(grep -E '^(torch|torchvision|torchaudio)==' requirements.txt)
+          pip install $TORCH_PINS --index-url https://download.pytorch.org/whl/cpu
 
       # The full pinned set in requirements.txt (including numpy and
       # setuptools) is verified to resolve cleanly in one shot; see its

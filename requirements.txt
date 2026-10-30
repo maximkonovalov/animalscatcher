@@ -26,7 +26,7 @@ PytorchWildlife==1.3.0
 # only verified/targeted interpreter (see README System Requirements).
 requests==2.34.2
 
-# numpy<2: torch==2.2.2 (pulled in by PytorchWildlife) is compiled
+# numpy<2: torch==2.2.2 (pinned below) is compiled
 # against the numpy 1.x ABI. A newer opencv-python/opencv-python-headless
 # (>=5, pulled in transitively) requires numpy>=2, which silently breaks
 # torch.from_numpy() at runtime (RuntimeError: Numpy is not available)
@@ -34,6 +34,21 @@ requests==2.34.2
 # newer opencv in the first place, but pin numpy explicitly too so the
 # resolver can't drift here again.
 numpy==1.26.4
+
+# torch/torchvision/torchaudio are pinned together because
+# PytorchWildlife declares all three unpinned, and torchaudio's compiled
+# libtorchaudio.so only loads against the torch it was built for. Left
+# floating, a Linux install resolved torch 2.12.1 next to torchaudio
+# 2.11.1 (whose own metadata only asks for torch>=2.11), and `import
+# PytorchWildlife` -- which imports torchaudio unconditionally, through
+# its bioacoustics module -- failed with "undefined symbol:
+# torch_exception_get_what_without_backtrace", so every test died at
+# collection. 2.2.2 is also the last torch with Intel-Mac wheels, i.e.
+# what this project is actually developed and deployed against;
+# torchvision 0.17.2 and torchaudio 2.2.2 are its matching releases.
+torch==2.2.2
+torchvision==0.17.2
+torchaudio==2.2.2
 
 # setuptools==59.5.0: yolov5 (a transitive dependency via PytorchWildlife)
 # imports pkg_resources at module level. Modern setuptools (~80+) removes
