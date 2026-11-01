@@ -62,9 +62,17 @@ came from -- no per-camera queues, priorities or scheduling unless the
 owner asks; Telegram sends go through the bounded `photo_executor`, never a
 raw thread.
 
-**After implementing:** add a `RELEASES.md` entry (format: `vX.Y -
-YYYY-MM-DD` header, dash underline, a short intro paragraph, then
-`Added:`, `Changed:` and `Fixed:` sections of flat bullets -- leave out
-the empty ones -- and a trailing `Breaking:` section only when upgrading
-needs action) and bump `VERSION` in `ac.py` if the change is
-release-worthy — or flag it for the technical-writer role.
+**Version:** `VERSION` in `ac.py` always names the release being worked
+toward, never one that has already shipped. The first time `ac.py` changes
+after a release (the latest `vX.Y` tag) -- comments and docstrings count --
+bump it to the next number in that same commit (v0.19 -> 0.20); further
+changes before the release keep that number. Cutting the release then
+needs no bump: it is the `RELEASES.md` entry for the version already in
+`ac.py`, plus the annotated tag.
+
+**After implementing:** if the change is release-worthy, add a
+`RELEASES.md` entry (format: `vX.Y - YYYY-MM-DD` header, dash underline, a
+short intro paragraph, then `Added:`, `Changed:` and `Fixed:` sections of
+flat bullets -- leave out the empty ones -- and a trailing `Breaking:`
+section only when upgrading needs action), or flag it for the
+technical-writer role.

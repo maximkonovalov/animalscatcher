@@ -80,6 +80,10 @@ history (cross-reference `RELEASES.md` and `AGENTS.md`):
   `SystemExit`, not a raw traceback.
 - Credential redaction on any new code path that stringifies exceptions
   from `requests` or embeds an RTSP URL (credentials go in the URL).
+- Version: if `ac.py` differs from the latest release tag
+  (`git diff $(git describe --tags --abbrev=0) -- ac.py`), its `VERSION`
+  must differ from that tag's too -- the first change after a release
+  carries the bump to the next number.
 
 Report back pass/fail per check (ruff, py_compile, pytest), and call out
 specifically if something reintroduces an issue `RELEASES.md` shows was

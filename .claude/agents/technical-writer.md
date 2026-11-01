@@ -43,6 +43,10 @@ Breaking:
     ac.cfg key) — omit the section entirely otherwise.
 ```
 
+The `vX.Y` in the header is the `VERSION` already in `ac.py`: it was
+bumped when the code first changed after the previous release, so writing
+the entry and tagging add no bump.
+
 **Verify before writing, never assume.** Every CLI command, config key, and
 file path you mention should be checked against `ac.py`, `ac.cfg.example`,
 `ruff.toml`, and the actual CI workflow
