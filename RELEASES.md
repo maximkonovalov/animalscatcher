@@ -1,6 +1,61 @@
 Release History
 ===============
 
+v0.17 - 2026-10-31
+------------------
+
+Frames that show motion now wait for the AI in one queue shared by all the
+cameras, and the summary reports how many were dropped from it. v0.16 kept
+only the newest frame per camera, which left the AI nothing to work
+through after a spike of motion and no way to see how overloaded it was.
+An existing ac.cfg works unchanged.
+
+Added:
+  - detection_queue (FrameQueue): one queue of 15 frames (AI_QUEUE_SIZE in
+    ac.py, not a setting) for all cameras. A frame that shows motion goes
+    in at the back and the AI takes frames from the front, whatever camera
+    they came from, so a spike of motion -- one camera in a long burst, or
+    several at once -- waits there instead of replacing itself. When the
+    queue is full the oldest frame is dropped to make room for the new one.
+  - Drop statistics in the Telegram summary. Each camera's MOTION line
+    reports "N dropped (queue full)", counted against the camera the
+    dropped frame came from, and an AI QUEUE block under the cameras adds
+    them up: frames offered (those that showed motion), frames dropped and
+    their share. A long burst always drops frames -- a camera in motion
+    offers four a second and the AI takes about one in 3.5 seconds -- so
+    the share says how much more motion there was than the AI could take,
+    not how many events it missed.
+  - Tests: test_frame_queue.py replaces test_pending_frames.py (oldest
+    first across cameras, the oldest dropped when full and attributed to
+    its camera, nothing lost or duplicated under concurrent offers); the
+    camera thread's drop counting; the AI QUEUE block and the whole summary
+    in test_motion_report.py. 130 tests in all.
+
+Changed:
+  - The queue replaces pending_frames (PendingFrames). It is not v0.15's
+    queue either: that one dropped the new frame and was filled with
+    samples offered whether or not anything moved, so what the AI picked
+    up was up to a minute old. This one holds only frames that showed
+    motion, and when it overflows it keeps the newest.
+  - "AI wait" in the summary is now how long a frame sat in the queue, and
+    "dropped (queue full)" replaces the "replaced by a newer frame" count.
+  - The AI does about twice the work per camera. Replaying camera 4's
+    quiet windows through the queue at 3.5 seconds a frame, a camera uses
+    about 4% of the AI on average and about 20% around dusk, against 2%
+    and 9% for v0.16's single frame (measured at 4.3 seconds a frame).
+  - What one shared queue costs. With camera 4 alone, the replayed
+    calibration visits all alert: the 15-second one about 6 seconds after
+    the animal appears, the two long ones about 12, and an animal that
+    hardly moved after 55. But a camera in constant motion fills the queue
+    and pushes the others' older frames out: with one other camera
+    flagging every check only the 117-second visit still alerts, 24
+    seconds in, and the shorter ones are not noticed. v0.16's frame per
+    camera, served in turn, alerted the 15-second visit within 12-14
+    seconds even with both other cameras busy. The per-camera drop counts
+    in the summary are where this would show up.
+  - README, AGENTS.md (the hand-off, and why it is this simple) and the
+    .claude/agents briefs describe the queue.
+
 v0.16 - 2026-10-31
 ------------------
 
