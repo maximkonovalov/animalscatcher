@@ -16,7 +16,6 @@ Debounce mechanics (verified against the implementation, not assumed):
     elapsed since then; if it's within STATIC_TOLERANCE of that box,
     it's filtered as static instead of alerting again.
 """
-import logging
 import os
 
 import numpy as np
@@ -24,8 +23,8 @@ import pytest
 
 import ac
 
-NAMES = {0: "Animal", 1: "Person"}
-COLORS = {0: (0, 255, 0), 1: (255, 0, 0)}
+NAMES = {0: "Animal", 1: "Person", 2: "Vehicle"}
+COLORS = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255)}
 
 
 class FakeDetections:
@@ -190,55 +189,30 @@ def test_cooldown_suppresses_a_third_sighting_even_if_moved(
     assert len(capture_photo_submits) == 1
 
 
-@pytest.fixture
-def log_lines():
-    """What ac's logger writes. It doesn't propagate to the root logger, so
-    caplog can't see it."""
-    lines = []
+def test_unmapped_detector_class_does_not_raise(frame, capture_photo_submits):
+    """Regression test for a fixed KeyError: stats[obj_name] += 1 used to
+    crash for any class_id outside {0,1,2} (obj_name falls back to the
+    literal "Object", a key `stats` never had).
 
-    class Collect(logging.Handler):
-        def emit(self, record):
-            lines.append(record.getMessage())
+    In today's code this path is actually gated by `motion_val`, which
+    _process_frame only ever populates for classes 0-2 (see the
+    `for c in [0, 1, 2]` loop at the end of the function) -- so a
+    class_id outside that set can never reach the alert branch through
+    the normal call sequence. We seed `motion_val` directly here to
+    exercise the fixed line itself, as a guard against a future change
+    (e.g. tracking additional classes) making this reachable again.
+    """
+    classifier = FakeClassifier()
+    cam_id = "cam04"
+    d_key = (cam_id, 9)
+    last_det, motion_val, last_box = {}, {d_key: True}, {}
+    detector = FakeDetector([0.9], [9], [[10, 10, 50, 50]])
 
-    handler = Collect()
-    ac.logger.addHandler(handler)
-    yield lines
-    ac.logger.removeHandler(handler)
+    ac._process_frame(cam_id, frame, detector, classifier, NAMES, COLORS,
+                      last_det, motion_val, last_box)  # would previously raise
 
-
-@pytest.mark.parametrize("class_id", [2, 9])
-def test_a_class_that_is_not_detected_is_ignored_completely(
-        frame, capture_photo_submits, log_lines, class_id):
-    # Vehicles are MegaDetector's class 2; 9 stands for anything else it
-    # might ever report (this used to be a KeyError on stats["Object"]).
-    # Neither leaves a trace: no log line, no registered motion, no count,
-    # and no alert however many times it is seen.
-    detector = FakeDetector([0.99], [class_id], [[10, 10, 50, 50]])
-    state = ({}, {}, {})
-
-    for _ in range(3):
-        run(detector, FakeClassifier(), frame, state)
-
-    assert log_lines == []
-    assert capture_photo_submits == []
-    assert (ac.stats["Animal"], ac.stats["Person"]) == (0, 0)
-    assert "Vehicle" not in ac.stats and "Object" not in ac.stats
-    assert state[1] == {("cam04", 0): False, ("cam04", 1): False}
-
-
-def test_a_vehicle_does_not_hide_an_animal_in_the_same_frame(
-        frame, capture_photo_submits, log_lines):
-    detector = FakeDetector([0.99, 0.9], [2, 0],
-                            [[60, 60, 95, 95], [10, 10, 50, 50]])
-    state = ({}, {}, {})
-
-    run(detector, FakeClassifier(), frame, state)
-    run(detector, FakeClassifier(), frame, state)
-
-    # Only the animal is logged, and it alerts on the second look as usual.
-    assert log_lines == ["[DETECT] Animal conf=0.90 on cam04"] * 2
-    assert ac.stats["Animal"] == 1
-    assert len(capture_photo_submits) == 1
+    assert ac.stats["Object"] == 1
+    del ac.stats["Object"]
 
 
 def test_no_detections_leaves_stats_unchanged(frame):
@@ -374,7 +348,7 @@ def test_a_frame_is_counted_once_however_many_animals_are_on_it(
 @pytest.mark.parametrize("confidence, class_id", [
     (0.3, 0),       # an animal, but below its threshold
     (0.99, 1),      # a person
-    (0.99, 2),      # a vehicle, which is not detected at all
+    (0.99, 2),      # a vehicle
 ])
 def test_a_frame_without_a_confident_animal_is_not_counted(
         frame, capture_photo_submits, confidence, class_id):

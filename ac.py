@@ -43,12 +43,8 @@ def load_config(path):
             'thresholds': {
                 0: parser.getfloat('DETECTION', 'threshold_0'),
                 1: parser.getfloat('DETECTION', 'threshold_1'),
+                2: parser.getfloat('DETECTION', 'threshold_2'),
             },
-            # threshold_2 was the vehicle class's threshold, and used to be
-            # required. Vehicles are no longer detected at all, but existing
-            # ac.cfg files still carry the key, so it is tolerated --
-            # __main__ warns that it no longer does anything.
-            'threshold_2_set': parser.has_option('DETECTION', 'threshold_2'),
             'cooldown': parser.getint('DETECTION', 'cooldown'),
             'summary_interval': parser.getint('DETECTION', 'summary_interval'),
             'species_threshold': parser.getfloat('DETECTION',
@@ -297,7 +293,7 @@ detection_queue = FrameQueue(AI_QUEUE_SIZE)
 
 stats_lock = threading.Lock()
 stats = {
-    "Animal": 0, "Person": 0,
+    "Animal": 0, "Person": 0, "Vehicle": 0,
     # Per-camera counters behind the summary's MOTION block, by cam_id;
     # see _motion_stats_for.
     "motion": {},
@@ -429,11 +425,12 @@ def summary_engine():
                           f"{now.strftime('%d/%m/%Y %H:%M')}\n\n"
                           f"STREAMS:\n{s_info}\n\n"
                           f"DETECTIONS:\n- Animals: {stats['Animal']}\n"
-                          f"- People: {stats['Person']}\n\n"
+                          f"- People: {stats['Person']}\n"
+                          f"- Vehicles: {stats['Vehicle']}\n\n"
                           f"MOTION:\n{_motion_report(stats['motion'])}\n\n"
                           f"AI QUEUE (room for {AI_QUEUE_SIZE} frames, all "
                           f"cameras):\n{_queue_report(stats['motion'])}")
-                stats.update({"Animal": 0, "Person": 0,
+                stats.update({"Animal": 0, "Person": 0, "Vehicle": 0,
                               "motion": {}, "start_time": now})
             send_telegram_message(report)
         except Exception as e:
@@ -657,21 +654,17 @@ def _process_frame(cam_id, frame, detector, classifier, names, colors,
                    last_det, motion_val, last_box, classify_fn=_classify_dfne):
     """Runs detection (and species classification) on one frame that showed
     motion, annotates it, counts it for the summary if an animal is on it,
-    and fires an alert for any new, non-static detection. Only animals and
-    people are looked for: the detector's vehicle class is ignored outright,
-    with no log line, no count and no alert."""
+    and fires an alert for any new, non-static detection."""
     results = detector.single_image_detection(frame)
     det = results.get("detections")
-    seen = {0: False, 1: False}
+    seen = {0: False, 1: False, 2: False}
     if det is not None and len(det.confidence) > 0:
         h, w, _ = frame.shape
         for i in range(len(det.confidence)):
             conf, cls = float(det.confidence[i]), int(det.class_id[i])
-            if cls not in THRESHOLDS:
-                continue
-            obj_name = names[cls]
+            obj_name = names.get(cls, "Object")
             logger.info(f"[DETECT] {obj_name} conf={conf:.2f} on {cam_id}")
-            if conf > THRESHOLDS[cls]:
+            if conf > THRESHOLDS.get(cls, 0.5):
                 seen[cls] = True
                 label = f"{obj_name} ({conf:.2f})"
                 box = det.xyxy[i]
@@ -723,7 +716,7 @@ def _process_frame(cam_id, frame, detector, classifier, names, colors,
                     else:
                         logger.info(f"[FILTER] Static {obj_name} ignored "
                                    f"on {cam_id} at ({x1},{y1})")
-    for c in (0, 1):
+    for c in [0, 1, 2]:
         motion_val[(cam_id, c)] = seen[c]
     if seen[0]:
         # One more motion frame with an animal on it, whatever the alert
@@ -755,7 +748,7 @@ def _expire_stale_latch(motion_val, last_look, cam_id, seen_at):
     and a sighting then must not count as already confirmed by one from
     the last time something walked past."""
     if seen_at - last_look.get(cam_id, seen_at) > CONFIRM_WINDOW:
-        for cls in (0, 1):
+        for cls in (0, 1, 2):
             motion_val[(cam_id, cls)] = False
     last_look[cam_id] = seen_at
 
@@ -787,8 +780,8 @@ def ai_engine():
     motion_val = {}
     last_box = {}
     last_look = {}
-    names = {0: "Animal", 1: "Person"}
-    colors = {0: (0, 255, 0), 1: (255, 0, 0)}
+    names = {0: "Animal", 1: "Person", 2: "Vehicle"}
+    colors = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255)}
     send_telegram_message(
         f"The Animals Catcher is online, version {VERSION}\n"
         f"Started: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
@@ -868,10 +861,6 @@ if __name__ == "__main__":
         logger.warning("[SYSTEM] frame_interval in ac.cfg no longer does "
                        "anything: frames reach the AI only when motion is "
                        "detected (see README, Motion Detection). Remove it.")
-    if _cfg['threshold_2_set']:
-        logger.warning("[SYSTEM] threshold_2 in ac.cfg no longer does "
-                       "anything: vehicles are not detected at all (see "
-                       "README, Configuration). Remove it.")
     logger.info(f"[SYSTEM] Motion check: threshold {MOTION_THRESHOLD:.3%}, "
                 f"pixel delta {MOTION_PIXEL_DELTA}, every "
                 f"{MOTION_CHECK_INTERVAL} frames, lookback "

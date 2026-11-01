@@ -29,6 +29,7 @@ chat_id = -100
 [DETECTION]
 threshold_0 = 0.45
 threshold_1 = 0.75
+threshold_2 = 0.95
 cooldown = 20
 frame_interval = 10
 summary_interval = 6

@@ -21,6 +21,7 @@ chat_id = -100123456
 [DETECTION]
 threshold_0 = 0.45
 threshold_1 = 0.75
+threshold_2 = 0.95
 cooldown = 20
 frame_interval = 10
 summary_interval = 6
@@ -52,8 +53,7 @@ def test_valid_config_returns_expected_values(tmp_path):
     assert cfg["port"] == "8554"
     assert cfg["telegram_token"] == "123456:ABCDEF"
     assert cfg["telegram_chat_id"] == "-100123456"
-    assert cfg["thresholds"] == {0: 0.45, 1: 0.75}
-    assert cfg["threshold_2_set"] is False
+    assert cfg["thresholds"] == {0: 0.45, 1: 0.75, 2: 0.95}
     assert cfg["cooldown"] == 20
     # Still in VALID_CFG as it is in every existing ac.cfg; no longer used.
     assert cfg["frame_interval_set"] is True
@@ -301,28 +301,6 @@ def test_frame_interval_is_no_longer_required(tmp_path):
     cfg = ac.load_config(path)
 
     assert cfg["frame_interval_set"] is False
-
-
-def test_threshold_2_is_no_longer_required(tmp_path):
-    # Vehicles are not detected, so a new ac.cfg has no use for the key that
-    # used to be the vehicle threshold and mandatory.
-    assert "threshold_2" not in VALID_CFG
-
-    cfg = ac.load_config(write_cfg(tmp_path, VALID_CFG))
-
-    assert cfg["thresholds"] == {0: 0.45, 1: 0.75}
-    assert cfg["threshold_2_set"] is False
-
-
-def test_a_leftover_threshold_2_is_tolerated_and_ignored(tmp_path):
-    # Every ac.cfg from before vehicles were dropped still has it.
-    path = write_cfg(tmp_path, VALID_CFG.replace(
-        "threshold_1 = 0.75\n", "threshold_1 = 0.75\nthreshold_2 = 0.95\n"))
-
-    cfg = ac.load_config(path)
-
-    assert cfg["threshold_2_set"] is True
-    assert cfg["thresholds"] == {0: 0.45, 1: 0.75}
 
 
 def test_motion_tunings_are_read_from_detection(tmp_path):
