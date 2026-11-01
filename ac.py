@@ -249,46 +249,47 @@ logger.addHandler(_log_handler)
 logger.propagate = False
 
 # --- 3. SHARED DATA & LOCKS ---
-class PendingFrames:
-    """The hand-off from the camera threads to ai_engine: at most one
-    waiting frame per camera, the newest. ai_engine is a single thread
-    shared by every camera and can't keep up if several cameras show
-    motion at once, so what it must never do is work through a backlog of
-    stale frames or let one busy camera crowd out the others. A camera
-    that offers a new frame before ai_engine got to its previous one just
-    replaces it -- the newer frame is the better one to look at -- and
-    take() serves the cameras that have a frame waiting in turn."""
+# How many frames wait for ai_engine, all cameras together. While one frame
+# is analysed (about 3.5 s on the target hardware) a camera that keeps showing
+# motion flags four more every second, so this is the room a spike of motion
+# gets before frames are dropped -- and the summary's drop count says whether
+# it was enough.
+AI_QUEUE_SIZE = 15
 
-    def __init__(self):
+class FrameQueue:
+    """The hand-off from the camera threads to ai_engine: one queue of the
+    frames that showed motion, shared by every camera, oldest first.
+    ai_engine is a single thread, so a spike of motion queues frames faster
+    than it takes them; the queue is the room that spike gets. When it is
+    full the oldest frame is dropped to make room for the new one, and
+    offer() says which camera's frame that was so the caller can count it."""
+
+    def __init__(self, size):
+        self._size = size
         self._cond = threading.Condition()
-        self._waiting = {}          # cam_id -> (frame, time offered)
-        self._last_served = None
+        self._frames = collections.deque()  # (cam_id, frame, time offered)
 
     def offer(self, cam_id, frame):
-        """Leaves `frame` as cam_id's waiting frame. Returns True if that
-        replaced a frame nobody had picked up yet."""
+        """Queues `frame` behind the ones already waiting. If the queue was
+        full, returns the camera id of the oldest frame, dropped to make
+        room; otherwise None."""
         with self._cond:
-            replaced = cam_id in self._waiting
-            self._waiting[cam_id] = (frame, time.time())
+            dropped = None
+            if len(self._frames) >= self._size:
+                dropped = self._frames.popleft()[0]
+            self._frames.append((cam_id, frame, time.time()))
             self._cond.notify()
-        return replaced
+        return dropped
 
     def take(self):
-        """Blocks until some camera has a frame waiting, then returns
-        (cam_id, frame, time it was offered) for the first such camera
-        after the one served last, wrapping around."""
+        """Blocks until a frame is waiting, then returns the oldest as
+        (cam_id, frame, time it was offered)."""
         with self._cond:
-            while not self._waiting:
+            while not self._frames:
                 self._cond.wait()
-            ids = sorted(self._waiting)
-            after = [c for c in ids
-                     if self._last_served is not None and c > self._last_served]
-            cam_id = (after or ids)[0]
-            self._last_served = cam_id
-            frame, offered_at = self._waiting.pop(cam_id)
-            return cam_id, frame, offered_at
+            return self._frames.popleft()
 
-pending_frames = PendingFrames()
+detection_queue = FrameQueue(AI_QUEUE_SIZE)
 
 stats_lock = threading.Lock()
 stats = {
@@ -302,7 +303,7 @@ stats = {
 
 def _new_motion_stats():
     return {"checks": 0, "motion": 0, "analysed": 0, "animals": 0,
-            "replaced": 0, "peak": 0.0, "wait_sum": 0.0, "wait_max": 0.0}
+            "dropped": 0, "peak": 0.0, "wait_sum": 0.0, "wait_max": 0.0}
 
 def _motion_stats_for(cam_id):
     """A camera's counters since the last summary. Call with stats_lock
@@ -386,7 +387,7 @@ def _motion_report(motion_stats):
         m = motion_stats.get(cam_id) or _new_motion_stats()
         line = (f"- {cam_id}: {m['checks']} checks, {m['motion']} motion, "
                 f"{m['analysed']} analysed ({m['animals']} with an animal), "
-                f"{m['replaced']} replaced by a newer frame\n"
+                f"{m['dropped']} dropped (queue full)\n"
                 f"  strongest change {m['peak']:.3%} (threshold "
                 f"{MOTION_THRESHOLD:.3%})")
         if m['analysed']:
@@ -394,6 +395,19 @@ def _motion_report(motion_stats):
                      f"max {m['wait_max']:.1f}s")
         lines.append(line)
     return "\n".join(lines)
+
+def _queue_report(motion_stats):
+    """The summary's AI QUEUE lines: how many frames that showed motion
+    were offered to the queue, over every camera, and how many were dropped
+    from it to make room. Dropped frames are the oldest waiting, mostly
+    near-copies from the early part of a long burst, so the share says how
+    much more motion there was than the AI could take, not how many events
+    it missed."""
+    offered = sum(m["motion"] for m in motion_stats.values())
+    dropped = sum(m["dropped"] for m in motion_stats.values())
+    share = dropped / offered * 100 if offered else 0.0
+    return (f"- Offered: {offered} (frames that showed motion)\n"
+            f"- Dropped (queue full): {dropped} ({share:.1f}%)")
 
 def summary_engine():
     """Periodically sends a summary of detections and stream stats."""
@@ -413,7 +427,9 @@ def summary_engine():
                           f"DETECTIONS:\n- Animals: {stats['Animal']}\n"
                           f"- People: {stats['Person']}\n"
                           f"- Vehicles: {stats['Vehicle']}\n\n"
-                          f"MOTION:\n{_motion_report(stats['motion'])}")
+                          f"MOTION:\n{_motion_report(stats['motion'])}\n\n"
+                          f"AI QUEUE (room for {AI_QUEUE_SIZE} frames, all "
+                          f"cameras):\n{_queue_report(stats['motion'])}")
                 stats.update({"Animal": 0, "Person": 0, "Vehicle": 0,
                               "motion": {}, "start_time": now})
             send_telegram_message(report)
@@ -513,12 +529,13 @@ def _rtsp_url(channel):
 MOTION_LOG_GAP = 10
 
 def camera_thread(cam_num):
-    """Reads one camera's RTSP stream and watches it for motion. Nothing
-    here depends on any other camera: it has its own detector and its own
-    slot in pending_frames. When a
-    check finds motion, the frame it just looked at -- the later of the
-    two it compared -- is what ai_engine gets to analyse; a frame that
-    shows no motion never reaches the AI."""
+    """Reads one camera's RTSP stream and watches it for motion with a
+    detector of its own. When a check finds motion, the frame it just looked
+    at -- the later of the two it compared -- is put in detection_queue, the
+    one queue every camera shares with ai_engine; a frame that shows no
+    motion never reaches the AI. If the queue was full its oldest frame was
+    dropped to make room, and that is counted against the camera it came
+    from."""
     cam_id = _cam_id(cam_num)
     url = _rtsp_url(cam_num)
     detector = MotionDetector(MOTION_THRESHOLD, MOTION_PIXEL_DELTA,
@@ -569,9 +586,10 @@ def camera_thread(cam_num):
                     logger.info(f"[MOTION] {cam_id}: {size:.3%} of the frame "
                                 f"changed (threshold {MOTION_THRESHOLD:.3%})")
                 last_motion = now
-                if pending_frames.offer(cam_id, frame):
+                dropped = detection_queue.offer(cam_id, frame)
+                if dropped:
                     with stats_lock:
-                        _motion_stats_for(cam_id)["replaced"] += 1
+                        _motion_stats_for(dropped)["dropped"] += 1
         except Exception as e:
             logger.error(f"[SYSTEM] camera_thread({cam_id}) iteration "
                         f"failed: {e}")
@@ -769,7 +787,7 @@ def ai_engine():
         f"Started: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
         f"Streams: {len(CAMERA_CHANNELS)}")
     while True:
-        cam_id, frame, offered_at = pending_frames.take()
+        cam_id, frame, offered_at = detection_queue.take()
         waited = time.time() - offered_at
         with stats_lock:
             counts = _motion_stats_for(cam_id)

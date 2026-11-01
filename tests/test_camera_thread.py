@@ -126,13 +126,12 @@ class ScriptedCapture:
 @pytest.fixture
 def camera(monkeypatch, tmp_path):
     """Runs camera_thread for channel 12 on a scripted capture and returns
-    (capture, the PendingFrames it fed). Motion is checked on every frame
-    against the previous one (lookback 0, no blur) unless a test says
-    otherwise, and the frames arrive `spacing` (a quarter of a second)
-    apart."""
-    pending = ac.PendingFrames()
+    (capture, the FrameQueue it fed): a new one `size` frames deep, or the
+    `queue` a test hands in, say one other cameras already filled. Motion
+    is checked on every frame against the previous one (lookback 0, no
+    blur) unless a test says otherwise, and the frames arrive `spacing` (a
+    quarter of a second) apart."""
     clock = ScriptedClock()
-    monkeypatch.setattr(ac, "pending_frames", pending)
     monkeypatch.setattr(ac, "BASE_OUTPUT_FOLDER", str(tmp_path))
     monkeypatch.setattr(ac, "time", clock)
     for name, value in dict(THRESHOLD=0.02, PIXEL_DELTA=25, CHECK_INTERVAL=1,
@@ -142,16 +141,25 @@ def camera(monkeypatch, tmp_path):
     monkeypatch.setitem(ac.stats, "motion", {})
     monkeypatch.setitem(ac.stats, "streams", {})
 
-    def run(frames, spacing=0.25, **tuning):
+    def run(frames, spacing=0.25, size=ac.AI_QUEUE_SIZE, queue=None,
+            **tuning):
         for name, value in tuning.items():
             monkeypatch.setattr(ac, f"MOTION_{name.upper()}", value)
+        if queue is None:
+            queue = ac.FrameQueue(size)
+        monkeypatch.setattr(ac, "detection_queue", queue)
         cap = ScriptedCapture(frames, clock, spacing)
         monkeypatch.setattr(ac.cv2, "VideoCapture", lambda url, backend: cap)
         with pytest.raises(_StopThread):
             ac.camera_thread(CAM)
-        return cap, pending
+        return cap, queue
 
     return run
+
+
+def queued(queue):
+    """Every frame still waiting in `queue`, oldest first."""
+    return [f for _, f, _ in queue._frames]
 
 
 def quiet():
@@ -187,9 +195,9 @@ def test_camera_thread_opens_the_configured_url_and_names_by_channel(
 
 
 def test_a_still_scene_never_reaches_the_ai(camera):
-    _, pending = camera([quiet() for _ in range(10)])
+    _, queue = camera([quiet() for _ in range(10)])
 
-    assert pending._waiting == {}
+    assert queued(queue) == []
     counts = ac.stats["motion"][CAM_ID]
     assert (counts["checks"], counts["motion"]) == (10, 0)
 
@@ -198,9 +206,9 @@ def test_the_frame_that_shows_motion_is_the_one_the_ai_gets(camera):
     # Of the two frames compared, the second -- the one that has the
     # visitor in it -- is handed over.
     shows_visitor = visitor()
-    _, pending = camera([quiet(), quiet(), shows_visitor])
+    _, queue = camera([quiet(), quiet(), shows_visitor])
 
-    cam_id, frame, _ = pending.take()
+    cam_id, frame, _ = queue.take()
 
     assert cam_id == CAM_ID
     assert frame is shows_visitor
@@ -220,22 +228,64 @@ def test_motion_is_found_between_the_frames_that_are_checked(camera):
     # and frames in between are never looked at.
     frames = [quiet() for _ in range(8)]
     frames[7] = visitor()
-    _, pending = camera(frames, check_interval=4)
+    _, queue = camera(frames, check_interval=4)
 
-    assert pending.take()[1] is frames[7]
+    assert queue.take()[1] is frames[7]
 
 
-def test_a_newer_frame_with_motion_replaces_one_the_ai_has_not_taken(camera):
+def test_frames_with_motion_queue_up_for_the_ai_oldest_first(camera):
     # The visitor appears (motion), then is gone again (motion again)
-    # before anyone took the first frame: only the latest is kept.
-    gone = quiet()
-    _, pending = camera([quiet(), visitor(), gone])
+    # before anyone took the first frame: both wait for the AI.
+    appears, gone = visitor(), quiet()
+    _, queue = camera([quiet(), appears, gone])
 
-    _, frame, _ = pending.take()
-
-    assert frame is gone
+    assert queue.take()[1] is appears
+    assert queue.take()[1] is gone
     counts = ac.stats["motion"][CAM_ID]
-    assert (counts["motion"], counts["replaced"]) == (2, 1)
+    assert (counts["motion"], counts["dropped"]) == (2, 0)
+
+
+def test_a_full_queue_drops_its_oldest_frames_and_counts_them(camera):
+    # Every check after the first sees the visitor come or go: five frames
+    # with motion for a queue two deep. The newest two are kept; the three
+    # before them were dropped, and each is counted as motion and as a drop.
+    frames = [quiet()] + [visitor() if i % 2 == 0 else quiet()
+                          for i in range(5)]
+    _, queue = camera(frames, size=2)
+
+    assert len(queued(queue)) == 2
+    assert queue.take()[1] is frames[4]
+    assert queue.take()[1] is frames[5]
+    counts = ac.stats["motion"][CAM_ID]
+    assert (counts["motion"], counts["dropped"]) == (5, 3)
+
+
+def test_a_drop_is_counted_against_the_camera_the_frame_came_from(camera):
+    # The queue is full of other cameras' frames. This camera's motion frame
+    # pushes the oldest, cam04's, out: cam04 lost a frame, this camera
+    # didn't.
+    queue = ac.FrameQueue(2)
+    queue.offer("cam04", quiet())
+    queue.offer("cam05", quiet())
+
+    camera([quiet(), visitor()], queue=queue)
+
+    assert ac.stats["motion"]["cam04"]["dropped"] == 1
+    assert "cam05" not in ac.stats["motion"]
+    assert ac.stats["motion"][CAM_ID]["dropped"] == 0
+    assert [queue.take()[0] for _ in range(2)] == ["cam05", CAM_ID]
+
+
+def test_a_drop_does_not_stop_the_camera_or_its_motion_log(camera, log_lines):
+    # The queue stays full for the whole burst; the camera keeps checking,
+    # and the burst is still one log line.
+    frames = [quiet()] + [visitor() if i % 2 == 0 else quiet()
+                          for i in range(8)]
+    camera(frames, size=1)
+
+    counts = ac.stats["motion"][CAM_ID]
+    assert (counts["checks"], counts["motion"], counts["dropped"]) == (9, 8, 7)
+    assert len(log_lines) == 1
 
 
 def test_the_peak_change_is_recorded_whether_or_not_it_triggered(camera):
@@ -252,9 +302,9 @@ def test_a_dropped_stream_is_marked_offline_and_comparison_starts_afresh(
         camera):
     # The first frame after the stream comes back has nothing before the
     # outage to be compared with, however different it is.
-    _, pending = camera([quiet(), None, visitor()])
+    _, queue = camera([quiet(), None, visitor()])
 
-    assert pending._waiting == {}
+    assert queued(queue) == []
     counts = ac.stats["motion"][CAM_ID]
     assert (counts["checks"], counts["motion"]) == (2, 0)
 
