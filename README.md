@@ -160,6 +160,13 @@ motion can't crowd out the others.
 Every camera uses the same tunings. `ac.py` refuses to start, naming the key,
 for a value out of range.
 
+`motion_threshold` and `motion_check_interval` exist in v0.15 and earlier too,
+with defaults of 0.02 and 3, and there the threshold counted every changed
+pixel rather than the largest patch. An `ac.cfg` that sets either from those
+days should drop the line or re-tune it against the summary: a patch of 2% of
+the frame is far more than a small animal changes, so 0.02 would never
+trigger.
+
 **Where the defaults come from.** They were calibrated on camera 4's footage
 (20 fps): three deer visits of 15 to 117 seconds, and 50 minutes of quiet day,
 dusk, night and dawn. A small or distant animal changes very little of the

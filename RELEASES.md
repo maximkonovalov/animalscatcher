@@ -1,6 +1,117 @@
 Release History
 ===============
 
+v0.16 - 2026-10-31
+------------------
+
+The AI now looks only at frames that show motion, each camera judged on
+its own. Until now every camera offered it about four frames a second
+whether or not anything moved and it could look at roughly one in fifty
+of them, so alerts came a minute or more after the animal and a short
+visit could slip between two looks. An existing ac.cfg still starts,
+but read Breaking if it sets motion_threshold. Also documents why
+Dependabot's security alerts for torch and setuptools are left alone.
+
+Added:
+  - Per-camera motion detection. Every motion_check_interval-th raw
+    frame (a quarter of a second on a 20 fps stream) is shrunk to
+    160x120, turned gray, blurred and compared with the frame
+    motion_lookback seconds earlier. A pixel counts as changed when its
+    brightness differs by more than motion_pixel_delta, and the frame
+    shows motion when the largest connected patch of changed pixels
+    covers more than motion_threshold of it; only the largest patch
+    counts, so scattered noise doesn't add up. The frame just checked is
+    the one the AI analyses, and a camera that sees no motion costs the
+    AI nothing. Each camera has its own detector, waiting slot and alert
+    state, so what one camera sees never changes what another gets.
+  - Three optional [DETECTION] keys, the same for every camera:
+    motion_pixel_delta (default 20; it was a hardcoded 25),
+    motion_lookback (2 seconds) and confirm_window (30 seconds, see
+    Changed). All five motion keys are range-checked at startup: ac.py
+    refuses to start, naming the key, for a value out of range. The
+    defaults were calibrated by replaying camera 4's archive footage: a
+    15 second visit that the old sampler missed now alerts within about
+    5 seconds alone and 12-14 with both other cameras busy, and quiet
+    day, dusk, night and dawn footage triggers on 0.3% of checks.
+    Cameras 5 and 6 were not part of that calibration, so a busier scene
+    will trigger more.
+  - A MOTION block in the Telegram summary, per camera: frames checked,
+    how many showed motion, how many the AI analysed and how many of
+    those had an animal on them (whether or not an alert followed), how
+    many were replaced by a newer frame before the AI got to them, the
+    strongest change seen beside the threshold, and how long frames
+    waited for the AI. It replaces the AI QUEUE block (sampled,
+    motion-triggered, dropped) and is the data for tuning the keys
+    above.
+  - [MOTION] log lines: the first motion of each burst on a camera is
+    logged with how much of the frame changed and the threshold. Motion
+    within 10 seconds of the last is the same burst, so a deer crossing
+    the yard is one line, not one per check.
+  - README "Motion Detection" section: how the check works, the
+    defaults and where they came from, how to tune them from the
+    summary, and what the check can't see.
+  - Tests for all of it: test_motion_detector.py, test_pending_frames.py
+    and test_motion_report.py; camera_thread driven against a fake
+    capture and a fake clock (which frames are checked and handed over,
+    a dropped stream, the burst log); the count of animals and the latch
+    expiry in test_process_frame.py; and config tests for the new keys.
+    120 tests in all.
+
+Changed:
+  - Frames no longer reach the AI on a timer. camera_thread queued a
+    frame whenever there was motion or every frame_interval-th frame, so
+    motion could only add frames, never hold one back -- and with
+    frame_interval and motion_check_interval both 5, as on the
+    deployment this was measured on, it added none. Each camera offered
+    about four frames a second, a shared 15-slot priority queue dropped
+    about 98% of them on arrival (1,016,707 of 1,036,839 in one 24 hour
+    v0.14 summary), and what the AI picked up was up to a minute old:
+    alerts came 72-85 seconds after the event in the three measured, and
+    a 15 second visit was looked at on only two frames, 13 seconds
+    apart, with the animal nearly gone from the second, so the two
+    sightings the alert gate wants never happened. The motion gate that
+    shipped (2% of the frame, 25 levels) fired about 176 times a day,
+    and an animal changes only a few tenths of a percent of the frame,
+    so it could not have fired on any visit examined. The price of the
+    change: an animal that stands almost perfectly still is not noticed
+    (one 50 second visit in the calibration footage never triggered, and
+    the old sampling would have caught it).
+  - pending_frames (PendingFrames) replaces the shared PriorityQueue:
+    one waiting frame per camera, the newest, with the AI serving the
+    cameras that have one in turn. A busy camera can no longer fill the
+    queue, and the AI never works through stale frames.
+  - The alert gate's second sighting has to come within confirm_window
+    (30 seconds) of the first. Frames used to arrive around the clock;
+    now they only follow motion, so the previous look at a camera can be
+    hours old and must not count as already confirming a new sighting.
+  - frame_interval is no longer required and does nothing: an ac.cfg
+    that still has it works, and the daemon logs a warning at startup.
+  - camera_thread reads frames with grab() and decodes (retrieve()) only
+    the ones it checks; the camera threads were measurably competing
+    with ai_engine for CPU.
+  - README, AGENTS.md, ac.cfg.example and the .claude/agents briefs
+    describe the new design: the diagrams, the agent table, the config
+    reference. The briefs' RELEASES.md format now matches the real
+    entries.
+  - ruff (dev-only) 0.17.1 -> 0.17.2, Dependabot PR #28.
+  - requirements.txt explains why torch 2.2.2 and setuptools 59.5.0 stay
+    pinned despite Dependabot's security alerts (nine for torch, one of
+    them Critical; five for setuptools). Comments only, no pin changed.
+    No bump can work here: the newest torch, torchvision and torchaudio
+    with a macOS x86_64 wheel are the current pins, and the production
+    machine is an Intel Mac. The comments go through each advisory and
+    name the one residual risk, a malicious model weights download
+    (torch.load).
+
+Breaking:
+  - motion_threshold means something else now: the largest connected
+    patch of changed pixels, not every changed pixel added up, and its
+    default falls from 0.02 to 0.0012 (motion_check_interval's goes from
+    3 to 5). An ac.cfg that sets motion_threshold -- the old example
+    suggested 0.02 -- should drop the line, or re-tune it against the
+    summary's MOTION block: a patch of 2% of the frame is far more than
+    a small animal ever changes, so it would never trigger.
+
 v0.15 - 2026-10-30
 ------------------
 
