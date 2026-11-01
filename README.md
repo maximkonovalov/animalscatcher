@@ -324,7 +324,8 @@ camera_thread: Manages one RTSP stream per channel in `[CAMERA] channels`
 (see Camera Setup above) and checks it for motion on its own (see Motion
 Detection above); only a frame that shows motion is passed on.
 
-summary_engine: Sends periodic health reports and detection stats to Telegram.
+summary_engine: Sends periodic health reports, detection stats and each
+camera's motion stats to Telegram.
 
 cleanup_engine: Keeps the system lean by purging old data.
 

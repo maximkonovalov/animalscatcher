@@ -25,7 +25,18 @@ with Claude Code.
 vX.Y - YYYY-MM-DD
 ------------------
 
-  - Bullet list of changes, flat, two-space indent.
+A short paragraph on what the release is about, and whether an existing
+ac.cfg keeps working.
+
+Added:
+  - Bullet list of changes, flat, two-space indent; continuation lines
+    indented four.
+
+Changed:
+  - Same shape. Added, Changed and Fixed are each left out when empty.
+
+Fixed:
+  - Same shape.
 
 Breaking:
   - Only present when upgrading requires action (e.g. a new required

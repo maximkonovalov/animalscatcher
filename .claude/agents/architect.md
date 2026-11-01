@@ -49,5 +49,6 @@ shows was already tried and rejected, and say so explicitly if you're aware
 of prior art.
 
 Output a concise written plan: files/functions touched, new config keys (if
-any), impact on the thread/queue model, and tradeoffs considered. Do not
+any), impact on the thread model and the `pending_frames` hand-off, and
+tradeoffs considered. Do not
 edit files yourself — hand off to the developer role to implement.

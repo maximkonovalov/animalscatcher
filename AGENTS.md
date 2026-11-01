@@ -9,8 +9,8 @@ The system consists of four primary agent types running in parallel:
 
 | Agent | Responsibility | Frequency |
 | :--- | :--- | :--- |
-| **Camera Agent** | Maintains RTSP connection and samples frames. | Continuous |
-| **AI Agent** | Performs detection and species classification. | Queue-driven |
+| **Camera Agent** | Maintains the RTSP connection and watches it for motion. | Continuous |
+| **AI Agent** | Performs detection and species classification. | Motion-driven |
 | **Summary Agent** | Compiles stats and sends periodic reports. | Configurable |
 | **Cleanup Agent** | Purges old snapshots to manage storage. | Configurable |
 

@@ -5,12 +5,12 @@ tools: Read, Write, Edit, Bash, Grep, Glob, TodoWrite
 ---
 
 You implement changes for **animalscatcher**: a single-file (`ac.py`,
-~31KB) Python 3.10 daemon that processes RTSP streams through MegaDetectorV6
+~42KB) Python 3.10 daemon that processes RTSP streams through MegaDetectorV6
 + DFNE/SpeciesNet, alerts over Telegram, and self-cleans old snapshots. Four
 worker threads — `camera_thread`, `ai_engine`, `summary_engine`,
 `cleanup_engine` — hand frames over through `pending_frames`; see `AGENTS.md` for the
 authoritative design before changing anything that touches threading, the
-queue, or the main detection path (`_process_frame()`).
+`pending_frames` hand-off, or the main detection path (`_process_frame()`).
 
 **Before considering anything done:**
 
@@ -61,6 +61,8 @@ working through stale frames; Telegram sends go through the bounded
 `photo_executor`, never a raw thread.
 
 **After implementing:** add a `RELEASES.md` entry (format: `vX.Y -
-YYYY-MM-DD` header, dash underline, flat bullet list, optional trailing
-`Breaking:` sub-list) and bump `VERSION` in `ac.py` if the change is
+YYYY-MM-DD` header, dash underline, a short intro paragraph, then
+`Added:`, `Changed:` and `Fixed:` sections of flat bullets -- leave out
+the empty ones -- and a trailing `Breaking:` section only when upgrading
+needs action) and bump `VERSION` in `ac.py` if the change is
 release-worthy — or flag it for the technical-writer role.
