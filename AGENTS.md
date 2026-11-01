@@ -67,9 +67,15 @@ It then takes frames from `detection_queue.take()`, oldest first whatever
 camera they came from (see Camera Agent above); each frame is handed to
 `_process_frame()`, which does the actual detection, classification, and
 alerting.
-1. **Detection:** Uses **MegaDetectorV6** for Animals, People, or
-   Vehicles. Every raw detection is logged with its confidence (before
-   threshold filtering), independent of whether it ends up alerting.
+1. **Detection:** Uses **MegaDetectorV6** for Animals and People. The
+   model also reports vehicles, but that class is dropped outright (a class
+   without a `threshold_N`, so not in `THRESHOLDS`): no log line, no count,
+   no alert -- and no vehicle threshold in `ac.cfg`, though one left over
+   from earlier versions is tolerated with a startup warning. Every raw
+   Animal or Person detection is logged with its confidence (before
+   threshold filtering), independent of whether it ends up alerting. The
+   model still has to look at a frame to find that out, so ignoring
+   vehicles does not make the AI any cheaper.
 2. **Classification:** If an animal is detected above `species_threshold`
    (config-driven, `ac.cfg` `[DETECTION]`), the agent crops the area --
    padded beyond the raw detection box by `crop_padding` (a fraction of

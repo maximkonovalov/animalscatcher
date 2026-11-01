@@ -5,8 +5,8 @@ and open source software under BSD license. I run it on my ancient
 Mac Mini 2018 but the code itself should run on any UNIX-like systems.
 
 Animals Catcher is a lightweight, AI-powered surveillance tool.
-It processes RTSP camera streams to detect and identify wildlife,
-people, and vehicles in real-time.
+It processes RTSP camera streams to detect and identify wildlife
+and people in real-time.
 
 By utilizing a two-stage AI pipeline, it first detects broad categories
 and then performs taxonomic classification to identify specific animal species.
@@ -70,8 +70,15 @@ following sections are defined:
 | CAMERA    | user, pass, ip, port, channels, rtsp_path | RTSP credentials, network address, and which streams to open (see Camera Setup below). |
 | TELEGRAM  | token, chat_id | Bot API token and target chat ID for alerts. |
 | PATHS     | base_output_folder | Storage location for snapshots. |
-| DETECTION | threshold_0-2, cooldown, confirm_window, motion_check_interval, motion_threshold, motion_pixel_delta, motion_lookback, summary_interval, species_threshold, static_tolerance, classifier, speciesnet_model, crop_padding | Confidence thresholds, alert frequency, motion detection (see Motion Detection below), and species classifier choice. |
+| DETECTION | threshold_0-1, cooldown, confirm_window, motion_check_interval, motion_threshold, motion_pixel_delta, motion_lookback, summary_interval, species_threshold, static_tolerance, classifier, speciesnet_model, crop_padding | Confidence thresholds, alert frequency, motion detection (see Motion Detection below), and species classifier choice. |
 | CLEANUP | max_age_days, cleanup_interval | Retention policy for snapshots. |
+
+`threshold_0` and `threshold_1` are the confidence an animal and a person
+must exceed to count. Vehicles are not detected at all: MegaDetector still
+reports them, but they are dropped before anything is logged, counted or
+alerted on. `threshold_2`, the vehicle threshold of earlier versions, does
+nothing now; an `ac.cfg` that still has it works, and the daemon logs a
+warning at startup.
 
 `ac.cfg` holds RTSP and Telegram credentials in plaintext and must never be
 committed (it's covered by `.gitignore`). Since the daemon runs via launchd
@@ -384,9 +391,9 @@ flowchart TD
 
     Q[("detection_queue<br/>one queue for all cameras (AI_QUEUE_SIZE frames),<br/>when full the oldest frame is dropped and counted")] --> AI(["ai_engine"])
 
-    AI --> MD["Stage 1: MegaDetector<br/>per-class threshold filter (Animal/Person/Vehicle)"]
+    AI --> MD["Stage 1: MegaDetector<br/>per-class threshold filter (Animal/Person; vehicles ignored)"]
     MD -->|"class Animal, conf > species_threshold"| SC["Stage 2: species classifier<br/>(DFNE or SpeciesNet)"]
-    MD -->|"class Person / Vehicle"| Gate
+    MD -->|"class Person"| Gate
     SC --> Gate["Alert decision gate<br/>(two-frame latch, see below)"]
 
     Gate -->|pass| Snap["write annotated snapshot"]

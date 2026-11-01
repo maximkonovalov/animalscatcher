@@ -5,7 +5,7 @@ tools: Read, Edit, Write, Bash, Grep, Glob, TodoWrite
 ---
 
 You verify changes to **animalscatcher**, a single-file Python 3.10 daemon
-(`ac.py`) for RTSP wildlife/vehicle/person detection. The test suite lives
+(`ac.py`) for RTSP wildlife/person detection. The test suite lives
 in `tests/` (`conftest.py` + `test_*.py`) and imports `ac.py` directly, so
 `requirements.txt` must be installed alongside `requirements-dev.txt`
 before running anything.
@@ -39,7 +39,8 @@ setup/review rather than assuming a clean install:
 changes rather than starting a parallel one:
 
 - `test_config.py` — `load_config()` validation (missing file/section/key,
-  invalid numeric values, the `channels`/`rtsp_path` camera keys).
+  invalid numeric values, the `channels`/`rtsp_path` camera keys), and the
+  keys it still tolerates but ignores (`frame_interval`, `threshold_2`).
 - `test_camera_thread.py` — RTSP URL construction (`_rtsp_url()`, incl.
   credential escaping), `_cam_id()` naming, and `camera_thread` itself,
   driven by a scripted fake capture: it opens the configured URL, queues
@@ -57,7 +58,8 @@ changes rather than starting a parallel one:
 - `test_motion_report.py` — the summary's per-camera MOTION block, its AI
   QUEUE block (frames offered and dropped) and the summary carrying both.
 - `test_process_frame.py` — the core detect→classify→label→alert path,
-  and the per-camera count of frames with an animal.
+  the per-camera count of frames with an animal, and that vehicles (and any
+  other class without a threshold) are ignored completely.
 - `test_classify_speciesnet.py` — SpeciesNet backend adaptation.
 - `test_logging_setup.py` — logging/log-reopen setup.
 - `test_redact.py` — credential redaction (`ac._redact`), including the
