@@ -5,12 +5,12 @@ tools: Read, Write, Edit, Bash, Grep, Glob, TodoWrite
 ---
 
 You implement changes for **animalscatcher**: a single-file (`ac.py`,
-~42KB) Python 3.10 daemon that processes RTSP streams through MegaDetectorV6
+~44KB) Python 3.10 daemon that processes RTSP streams through MegaDetectorV6
 + DFNE/SpeciesNet, alerts over Telegram, and self-cleans old snapshots. Four
 worker threads — `camera_thread`, `ai_engine`, `summary_engine`,
-`cleanup_engine` — hand frames over through `pending_frames`; see `AGENTS.md` for the
+`cleanup_engine` — hand frames over through `detection_queue`; see `AGENTS.md` for the
 authoritative design before changing anything that touches threading, the
-`pending_frames` hand-off, or the main detection path (`_process_frame()`).
+`detection_queue` hand-off, or the main detection path (`_process_frame()`).
 
 **Before considering anything done:**
 
@@ -55,10 +55,11 @@ including the "empty token must not mangle the string" edge case
 
 **Threading invariants to preserve** unless the architect role has signed
 off on changing them: per-thread top-level try/except isolation;
-`pending_frames` keeps at most one (the newest) frame per camera and serves
-cameras in turn, so one camera can't crowd out another or leave `ai_engine`
-working through stale frames; Telegram sends go through the bounded
-`photo_executor`, never a raw thread.
+`detection_queue` stays one bounded queue shared by all cameras that drops
+its oldest frame when full and counts the drop against the camera the frame
+came from -- no per-camera queues, priorities or scheduling unless the
+owner asks; Telegram sends go through the bounded `photo_executor`, never a
+raw thread.
 
 **After implementing:** add a `RELEASES.md` entry (format: `vX.Y -
 YYYY-MM-DD` header, dash underline, a short intro paragraph, then

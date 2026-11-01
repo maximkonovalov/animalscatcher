@@ -28,7 +28,8 @@ Each channel listed in `[CAMERA] channels` spawns its own dedicated thread.
 * **Resilience:** If a stream drops, the agent enters a retry loop.
 * **Motion detection:** Each camera runs its own `MotionDetector` (the
   tunings are the `[DETECTION]` motion keys, the same for every camera),
-  and nothing one camera does affects another. Every `motion_check_interval`-th raw
+  so whether a camera is watched never depends on another. Every
+  `motion_check_interval`-th raw
   frame is compared with a reference frame (the previous check, or the one
   `motion_lookback` seconds earlier): shrunk to 160x120, gray, blurred,
   `motion_pixel_delta` per pixel, and the largest connected patch of
@@ -43,21 +44,27 @@ Each channel listed in `[CAMERA] channels` spawns its own dedicated thread.
   `[MOTION] cam04: 0.350% of the frame changed (threshold 0.120%)`. The
   rest of the burst is counted (the summary's "motion") but not logged, so
   the gap runs from the latest motion, not from where the burst began.
-* **Hand-off:** `pending_frames` (`PendingFrames`) holds at most one frame
-  per camera, the newest: a new motion frame replaces one `ai_engine`
-  hasn't picked up (counted as "replaced"), and `take()` serves the
-  cameras that have a frame waiting in turn. That replaced the shared
-  `PriorityQueue`, where one busy camera could fill every slot, frames
-  were dropped on arrival whatever their priority, and what the AI looked
-  at was up to a full queue old.
+* **Hand-off:** `detection_queue` (`FrameQueue`) is the one queue of the
+  frames that show motion, shared by every camera: `AI_QUEUE_SIZE` (15)
+  frames, oldest first, which is what absorbs a spike of motion. When it is
+  full, `offer()` drops the oldest entry to make room for the new frame and
+  returns the camera that entry came from; `camera_thread` counts the drop
+  against that camera ("dropped" in the summary). `ai_engine` takes frames
+  with `take()`, oldest first, whatever camera they came from. That is the
+  whole algorithm, on purpose: nothing per camera, no priorities, no
+  scheduling. What it costs is that the cameras share the room: a camera in
+  constant motion fills the queue, pushes the others' older frames out and
+  gets most of the AI's passes (the calibration visits in README's Motion
+  Detection section show how much), and the per-camera drop counts are how
+  that would show up.
 
 ### AI Inference Agent (`ai_engine`)
 The core "brain" of the system. Before loading any model, it clears out
 any `MDV6*.tmp` partial download left behind in the working directory by
 a previous, interrupted weights download (MegaDetectorV6 fetches its
 weights via the `wget` package, which doesn't clean these up itself).
-It then takes frames from `pending_frames.take()`, one camera at a time
-in turn (see Camera Agent above); each frame is handed to
+It then takes frames from `detection_queue.take()`, oldest first whatever
+camera they came from (see Camera Agent above); each frame is handed to
 `_process_frame()`, which does the actual detection, classification, and
 alerting.
 1. **Detection:** Uses **MegaDetectorV6** for Animals, People, or
@@ -91,11 +98,18 @@ provides a heartbeat to ensure the system is active. Also reports, per
 camera, how many frames were checked for motion, how many showed it, how
 many `ai_engine` analysed (and how many of those had an animal on them --
 `_process_frame` counts that whether or not an alert follows), how many
-were replaced by a newer frame before it got to them, the strongest change
-seen beside the motion threshold, and how long frames waited for the AI --
-all cameras share one `ai_engine` thread, so this is both the visibility
-into whether it keeps up and the data for tuning the motion settings (see
-README's Motion Detection section).
+of its frames were dropped from the queue, the strongest change seen
+beside the motion threshold, and how long frames waited in the queue for
+the AI. An AI QUEUE block under the cameras adds them up: frames offered
+to the queue and how many were dropped, with their share. A dropped frame
+is the oldest one waiting when a newer one reached a full queue, so it is
+counted against the camera it came from. Drops are expected in any long
+burst (a camera with motion offers four frames a second, the AI takes about
+one in 3.5 s), so they measure how much more motion there was than the AI
+could take, not how many events it missed. All cameras share one
+`ai_engine` thread, so this is both the visibility into whether it keeps up
+and the data for tuning the motion settings (see README's Motion Detection
+section).
 
 ### Cleanup Agent (`cleanup_engine`)
 A maintenance worker that keeps the host system stable.
@@ -112,9 +126,10 @@ A maintenance worker that keeps the host system stable.
 ## 3. Data Flow Diagram
 
 1. **RTSP Stream** -> **Camera Agent** (motion check, per camera)
-2. **Camera Agent** -> **`pending_frames`** (frames that show motion; one
-   waiting frame per camera)
-3. **`pending_frames`** -> **AI Agent** (Inference & Labeling)
+2. **Camera Agent** -> **`detection_queue`** (frames that show motion; one
+   queue for all cameras, the oldest frame is dropped and counted when it
+   is full)
+3. **`detection_queue`** -> **AI Agent** (Inference & Labeling)
 4. **AI Agent** -> **Telegram API** (User Notification)
 5. **AI Agent** -> **Local Storage** (Snapshot persistence)
 
@@ -124,6 +139,16 @@ A maintenance worker that keeps the host system stable.
 * **Asynchronous Notifications:** Telegram photos are sent via a bounded
   `ThreadPoolExecutor` (4 workers) to prevent blocking the AI pipeline
   without spawning an unbounded thread per detection.
+* **A simple hand-off:** Each camera judges its own motion; a frame that
+  shows it goes into one bounded queue shared by all cameras, the oldest
+  frame is dropped when the queue is full and the drops are counted and
+  reported; one AI thread takes frames oldest first. Nothing more: the
+  hand-off was a shared priority queue that dropped new frames (v0.15), then
+  a newest-frame slot per camera that left nothing to absorb a spike
+  (v0.16), and a per-camera queue served in turn was built and set aside
+  as more mechanism than the problem needs. Keep it this simple unless
+  there is evidence that it costs something worth a mechanism -- the
+  per-camera drop counts in the summary are that evidence.
 * **Thread Safety:** A `stats_lock` protects the global `stats` dictionary.
 * **Resilience:** Each agent's main loop is wrapped in `try/except`, so an
   unexpected error is logged and the loop continues rather than silently

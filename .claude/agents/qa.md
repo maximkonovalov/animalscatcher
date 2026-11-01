@@ -42,17 +42,20 @@ changes rather than starting a parallel one:
   invalid numeric values, the `channels`/`rtsp_path` camera keys).
 - `test_camera_thread.py` — RTSP URL construction (`_rtsp_url()`, incl.
   credential escaping), `_cam_id()` naming, and `camera_thread` itself,
-  driven by a scripted fake capture: it opens the configured URL, hands
-  over only the frame that shows motion, checks every Nth frame, starts
-  its comparison afresh after a dropped stream, and logs the first motion
-  of each burst (a fake clock stands in for `time`, so the 10 s gap costs
-  nothing to test).
-- `test_pending_frames.py` — `PendingFrames`, the per-camera hand-off to
-  `ai_engine`: newest frame wins, cameras served in turn, and nothing lost
-  or duplicated under concurrent offers.
+  driven by a scripted fake capture: it opens the configured URL, queues
+  only the frames that show motion (and counts the oldest frames a full
+  queue drops, against the camera they came from), checks every Nth frame,
+  starts its comparison afresh after a dropped stream, and logs the first
+  motion of each burst (a fake clock stands in for `time`, so the 10 s gap
+  costs nothing to test).
+- `test_frame_queue.py` — `FrameQueue`, the one queue shared by all cameras
+  that feeds `ai_engine`: oldest frame first whatever the camera, a full
+  queue drops its oldest frame and says whose it was, and nothing lost or
+  duplicated under concurrent offers.
 - `test_motion_detector.py` — `MotionDetector`: threshold, pixel delta and
   lookback sensitivity, largest-patch (not total-area) counting, reset.
-- `test_motion_report.py` — the summary's per-camera MOTION block.
+- `test_motion_report.py` — the summary's per-camera MOTION block, its AI
+  QUEUE block (frames offered and dropped) and the summary carrying both.
 - `test_process_frame.py` — the core detect→classify→label→alert path,
   and the per-camera count of frames with an animal.
 - `test_classify_speciesnet.py` — SpeciesNet backend adaptation.
@@ -64,9 +67,10 @@ changes rather than starting a parallel one:
 **What to specifically probe**, given this project's actual failure
 history (cross-reference `RELEASES.md` and `AGENTS.md`):
 
-- Hand-off behavior: a newer frame for a camera replaces its waiting one
-  (counted as "replaced"), and one busy camera must not starve the others —
-  check `PendingFrames` against both.
+- Hand-off behavior: the queue is bounded, a full one drops its *oldest*
+  frame (counted as "dropped", against the camera that frame came from, not
+  the one that offered the new one), and frames come out oldest first —
+  check `FrameQueue` and the counting in `camera_thread` against all three.
 - Per-frame error isolation: one bad frame in `_process_frame()` must log
   and continue, never take down `ai_engine`.
 - Config fail-fast messages: missing file, missing section/key, and a

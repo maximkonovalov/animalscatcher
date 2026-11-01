@@ -13,8 +13,9 @@ Read `AGENTS.md` first for any question touching threads or data flow — it
 is the authoritative architecture doc for this project's four internal
 worker threads (`camera_thread`, `ai_engine`, `summary_engine`,
 `cleanup_engine`), where each camera runs its own motion check and hands
-frames that show motion to `ai_engine` through `pending_frames` (one
-waiting frame per camera, newest wins, cameras served in turn). Don't re-derive
+frames that show motion to `ai_engine` through `detection_queue` (one
+bounded queue shared by all cameras; when it is full the oldest frame is
+dropped and counted). Don't re-derive
 this from `ac.py` alone; keep whatever you design consistent with it, and
 flag it for the technical-writer role to update if your design changes it.
 
@@ -31,9 +32,14 @@ these unless you have a specific, documented reason to break one:
   rather than killing that thread (and the rest of the daemon keeps running).
 - Telegram sends are asynchronous via a *bounded* `ThreadPoolExecutor` (4
   workers) — not an unbounded thread per detection.
-- `pending_frames` holds at most one frame per camera and serves cameras in
-  turn: a camera with constant motion must not crowd out the others, and
-  `ai_engine` must never work through a backlog of stale frames.
+- `detection_queue` is one bounded queue (`AI_QUEUE_SIZE`) shared by all
+  cameras, oldest first. When it is full the oldest entry is dropped to make
+  room and counted against the camera it came from. Keep it that simple:
+  per-camera queues, priorities and fair scheduling were tried or built and
+  set aside as more mechanism than the problem needs. The known cost is
+  that a camera in constant motion crowds the others out (README, Motion
+  Detection, has the replay) -- add a mechanism only for evidence the
+  per-camera drop counts in the summary give.
 - SIGTERM/SIGINT drain `photo_executor` before exit; SIGUSR1 reopens log
   file descriptors in place (for external log rotation) rather than
   restarting the process.
@@ -44,11 +50,14 @@ defensive classifier-output key lookups were superseded by a more correct
 fix in v0.5; motion detection first ran *additively* on top of
 `frame_interval` sampling, where it only reprioritised frames that were
 sampled anyway while the AI dropped ~98% of what it was offered -- frames
-now reach the AI only when a camera's own motion check fires). Don't re-propose something RELEASES.md
+now reach the AI only when a camera's own motion check fires; and the
+hand-off to the AI went from a shared 15-frame priority queue that dropped
+new frames, to a newest-frame slot per camera that left nothing to absorb a
+spike, to one shared queue that drops its oldest frame). Don't re-propose something RELEASES.md
 shows was already tried and rejected, and say so explicitly if you're aware
 of prior art.
 
 Output a concise written plan: files/functions touched, new config keys (if
-any), impact on the thread model and the `pending_frames` hand-off, and
+any), impact on the thread model and the `detection_queue` hand-off, and
 tradeoffs considered. Do not
 edit files yourself — hand off to the developer role to implement.

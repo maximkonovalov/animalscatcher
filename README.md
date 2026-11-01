@@ -126,10 +126,10 @@ daemon also forces RTSP over TCP):
 ## Motion Detection
 
 Every camera is watched on its own. Its `camera_thread` compares frames of
-that camera's stream with each other and hands only a frame that shows
-motion to the AI: a camera where nothing moves costs the AI nothing, and
-what one camera sees never changes what another gets (each has its own
-detector, its own waiting slot and its own alert state).
+that camera's stream with each other and queues only a frame that shows
+motion for the AI: a camera where nothing moves costs the AI nothing, and
+what one camera sees never changes whether another is watched (each has its
+own detector and its own alert state).
 
 Every `motion_check_interval`-th frame (counted in raw frames, so 5 on a
 20 fps stream is every quarter second) is shrunk to 160x120, turned gray and
@@ -143,11 +143,22 @@ patch counts, not the total changed area, so scattered noise doesn't add up
 to motion and a small threshold stays usable.
 
 The AI is a single thread shared by every camera -- one copy of the models
-is all the RAM of a small machine allows -- so each camera has one waiting
-slot. A newer frame with motion replaces an older one the AI hasn't reached
-yet, and the AI serves the cameras that have a frame waiting in turn. It
-never works through a backlog of stale frames, and a camera with constant
-motion can't crowd out the others.
+is all the RAM of a small machine allows -- so the frames that show motion
+wait for it in one queue shared by all the cameras. It holds `AI_QUEUE_SIZE`
+frames (15, in `ac.py`) and the AI takes them oldest first, whatever camera
+they came from. A spike of motion -- one camera in a long burst, or several
+at once -- fills the queue and the frames are analysed as the AI gets to
+them. When the queue is full, the oldest frame is dropped to make room for
+the new one, and the drop is counted against the camera that frame came
+from (see Tuning below). Each queued frame is a full frame in memory (about
+3 MB at 1280x720) and costs one model pass, about 3.5 seconds on a Mac mini
+2018, when its turn comes.
+
+The cameras share the queue's room, so a camera in constant motion fills it
+with its own frames, pushes the older frames of the others out and gets most
+of the AI's passes. How much that matters is under "Where the defaults come
+from" below; the per-camera drop counts in the summary show when it is
+happening.
 
 | Key | Default | Effect |
 | :--- | :--- | :--- |
@@ -155,7 +166,7 @@ motion can't crowd out the others.
 | `motion_pixel_delta` | 20 | How much a pixel's brightness (0-255) must change to count as changed. Lower is more sensitive, and noisier at dusk and dawn. |
 | `motion_check_interval` | 5 | Raw frames between checks (a quarter second on a 20 fps stream). Higher costs less CPU. |
 | `motion_lookback` | 2 | Seconds back to the reference frame; 0 compares with the previous check. A longer lookback makes slow movers visible, at the price of motion registering for about that long after something stops or leaves. |
-| `confirm_window` | 30 | Seconds within which a second sighting confirms the first for the alert gate (see Project Structure). Keep it longer than the AI takes to come round to a camera again: about 4 seconds per camera with motion waiting. |
+| `confirm_window` | 30 | Seconds within which a second sighting confirms the first for the alert gate (see Project Structure). Keep it longer than the gap between two looks at the same camera: about 3.5 seconds when it has the AI to itself, more when other cameras' frames are queued in between. |
 
 Every camera uses the same tunings. `ac.py` refuses to start, naming the key,
 for a value out of range.
@@ -175,22 +186,43 @@ and a deer in view changed roughly 0.15-0.3% of it while it moved, against
 under 0.1% for a quiet day or night scene -- which is why the threshold is a fraction
 of a percent, not the 2% an earlier version used, and why comparing with a
 frame two seconds back beats comparing with the previous check. Replayed
-against the model's own detections of that footage, these settings alerted
-on every visit in which the animal moved, even with another camera taking
-half of the AI's time, and a quiet camera used about 2% of the AI on average (about
-9% around dusk, when the lighting and the IR filter change). Cameras 5 and 6
-were not part of that calibration; a busier scene triggers more.
+against the model's own detections of that footage through the queue as it
+is (15 frames, 3.5 seconds a frame), these settings alerted on every visit
+with the camera alone: the 15-second visit about 6 seconds after the animal
+appeared, the two long ones about 12, and a visit by an animal that hardly
+moved only after 55 seconds, when it was nearly gone. A quiet camera used
+about 4% of the AI on average, about 20% around dusk, when the lighting and
+the IR filter change. Cameras 5 and 6 were not part of that calibration; a
+busier scene triggers more, and a camera in constant motion crowds the
+others out of the shared queue. With one other camera flagging motion on
+every check, only the longest visit (117 seconds) still alerted, 24 seconds
+in (38 with two others); the shorter ones were not noticed. A camera that
+never stops moving does that to the rest.
 
 **Tuning.** The summary sent every `summary_interval` hours has a MOTION
 block per camera: frames checked, how many showed motion, how many the AI
-analysed and how many of those had an animal on them, how many were
-replaced by a newer frame before the AI got to them, the strongest change
-seen beside the threshold, and how long frames waited for the AI. Animals
+analysed and how many of those had an animal on them, how many of its
+frames were dropped from the queue, the strongest change seen beside the
+threshold, and how long frames waited in the queue for the AI. Animals
 are counted whether or not an alert follows (the alert gate also wants a
 second look, the cooldown past and a new position), so animals against
 frames analysed is how often a motion pays off. A strongest change far
 below the threshold means that camera never triggers; one just above it
 means the threshold sits at the noise.
+
+Below it, an AI QUEUE block adds up every camera: the frames offered to the
+queue (those that showed motion) and how many were dropped, with their
+share. A dropped frame is the oldest one waiting when a newer one arrived at
+a full queue, so it is counted against the camera it came from, which is not
+necessarily the camera whose motion filled the queue. Drops are expected in
+any long burst: a camera with motion offers four frames a second at the
+defaults, the AI takes about one in 3.5 seconds, and once the queue is full
+the oldest frames -- near-copies of ones still waiting -- go. So the count
+says how much more motion there was than the AI could take, not how many
+events it missed, and the per-camera lines show who is losing frames; the
+wait says how far behind the AI was. The size is `AI_QUEUE_SIZE` in
+`ac.py`, not a setting: a bigger queue holds more of a spike but costs a
+model pass per frame.
 
 Motion is also written to the log, one line when a burst of it starts:
 
@@ -331,8 +363,8 @@ camera_thread: Manages one RTSP stream per channel in `[CAMERA] channels`
 (see Camera Setup above) and checks it for motion on its own (see Motion
 Detection above); only a frame that shows motion is passed on.
 
-summary_engine: Sends periodic health reports, detection stats and each
-camera's motion stats to Telegram.
+summary_engine: Sends periodic health reports, detection stats, each
+camera's motion stats and how many frames the AI queue dropped to Telegram.
 
 cleanup_engine: Keeps the system lean by purging old data.
 
@@ -350,7 +382,7 @@ output folder:
 flowchart TD
     C["camera_thread<br/>(one per configured channel,<br/>each with its own motion check)"] -->|frame that shows motion| Q
 
-    Q[("pending_frames<br/>one waiting frame per camera,<br/>newest wins, cameras served in turn")] --> AI(["ai_engine"])
+    Q[("detection_queue<br/>one queue for all cameras (AI_QUEUE_SIZE frames),<br/>when full the oldest frame is dropped and counted")] --> AI(["ai_engine"])
 
     AI --> MD["Stage 1: MegaDetector<br/>per-class threshold filter (Animal/Person/Vehicle)"]
     MD -->|"class Animal, conf > species_threshold"| SC["Stage 2: species classifier<br/>(DFNE or SpeciesNet)"]
