@@ -1,6 +1,35 @@
 Release History
 ===============
 
+v0.19 - 2026-11-01
+------------------
+
+Vehicles are detected again: this takes back v0.18, whose change to ignore
+the vehicle class took no work off the AI. Read Breaking if you removed
+threshold_2 from ac.cfg after v0.18's startup warning.
+
+Changed:
+  - The vehicle class is detected as it was before v0.18: _process_frame
+    logs every vehicle it sees, counts it for the summary and alerts on
+    one above threshold_2 (0.95 in the example config, so almost never),
+    and the summary's DETECTIONS block lists vehicles again. The code,
+    the tests (130 in all) and ac.cfg.example are v0.17's again.
+  - Why: the model looks at a frame before any class is considered, so
+    ignoring one saves it nothing, and v0.18 cost the vehicle count and
+    the alerts for no gain. What reaches the model is decided by the
+    motion check and the queue.
+  - README, AGENTS.md and the QA brief describe vehicles as detected
+    again; AGENTS.md also records why the class is not filtered.
+
+Breaking:
+  - threshold_2 is required again. v0.18 stopped needing it and warned at
+    startup that the line did nothing, so an ac.cfg that dropped it for
+    that reason now stops the daemon at startup, naming the missing key
+    ("No option 'threshold_2' in section: 'DETECTION'"). Put the line
+    back under [DETECTION] (0.95 in ac.cfg.example) before starting
+    v0.19. An ac.cfg that kept it, or was not touched after v0.17, works
+    unchanged.
+
 v0.18 - 2026-10-31
 ------------------
 

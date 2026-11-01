@@ -19,7 +19,7 @@ from PytorchWildlife.models import classification as pw_classification
 from PytorchWildlife.models import detection as pw_detection
 
 # --- 0. VERSIONING ---
-VERSION = "0.18"
+VERSION = "0.19"
 
 # --- 1. LOAD CONFIGURATION ---
 def load_config(path):
