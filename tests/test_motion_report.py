@@ -101,7 +101,7 @@ def test_the_summary_carries_the_motion_and_queue_blocks_then_starts_over(
         if len(sleeps) > 1:
             raise _StopSummary
 
-    stats = {"Animal": 3, "Person": 1, "Vehicle": 2,
+    stats = {"Animal": 3, "Person": 1,
              "start_time": datetime.datetime(2026, 10, 31, 21, 22),
              "streams": {"cam06": {"status": "ONLINE", "res": "1280x720"}},
              "motion": {"cam06": counters(
@@ -116,7 +116,8 @@ def test_the_summary_carries_the_motion_and_queue_blocks_then_starts_over(
 
     (report,) = sent
     assert "Range: 31/10/2026 21:22 - " in report
-    assert "- Animals: 3\n- People: 1\n- Vehicles: 2" in report
+    assert "DETECTIONS:\n- Animals: 3\n- People: 1\n\nMOTION:" in report
+    assert "Vehicle" not in report
     assert ("- cam06: 900 checks, 40 motion, 12 analysed (0 with an animal), "
             "28 dropped (queue full)") in report
     assert (f"AI QUEUE (room for {ac.AI_QUEUE_SIZE} frames, all cameras):\n"
@@ -125,4 +126,4 @@ def test_the_summary_carries_the_motion_and_queue_blocks_then_starts_over(
     assert report.index("MOTION:") < report.index("AI QUEUE")
     # The next summary counts from zero.
     assert stats["motion"] == {}
-    assert (stats["Animal"], stats["Person"], stats["Vehicle"]) == (0, 0, 0)
+    assert (stats["Animal"], stats["Person"]) == (0, 0)
