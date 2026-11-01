@@ -25,7 +25,9 @@ threshold_2 = 0.95
 cooldown = 20
 # Summary interval in hours (e.g., 6)
 summary_interval = 6
-# Minimum confidence to accept a species classification (Stage 2)
+# Stage 2 (species) runs only on an Animal detection above this confidence,
+# and its species is used only if the classifier's own confidence is above
+# it too
 species_threshold = 0.45
 # Tolerance for "Static" object detection, as a fraction of frame
 # width/height (e.g., 0.03 = approx 3%)
@@ -75,8 +77,9 @@ static_tolerance = 0.03
 # motion_lookback = 2
 # Seconds within which a second sighting of the same kind of object on the
 # same camera confirms the first one (an alert needs two). Keep it longer
-# than the AI takes to come round to a camera again: roughly 4 seconds per
-# camera that has motion waiting.
+# than the gap between two looks at the same camera: about 3.5 seconds when
+# it has the AI to itself, more when other cameras' frames are queued in
+# between.
 # confirm_window = 30
 
 [PATHS]

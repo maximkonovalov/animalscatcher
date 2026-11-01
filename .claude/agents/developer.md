@@ -5,12 +5,13 @@ tools: Read, Write, Edit, Bash, Grep, Glob, TodoWrite
 ---
 
 You implement changes for **animalscatcher**: a single-file (`ac.py`,
-~44KB) Python 3.10 daemon that processes RTSP streams through MegaDetectorV6
+~43KB) Python 3.10 daemon that processes RTSP streams through MegaDetectorV6
 + DFNE/SpeciesNet, alerts over Telegram, and self-cleans old snapshots. Four
-worker threads — `camera_thread`, `ai_engine`, `summary_engine`,
-`cleanup_engine` — hand frames over through `detection_queue`; see `AGENTS.md` for the
-authoritative design before changing anything that touches threading, the
-`detection_queue` hand-off, or the main detection path (`_process_frame()`).
+kinds of worker thread — `camera_thread` (one per camera), `ai_engine`,
+`summary_engine`, `cleanup_engine` — of which the first two hand frames over
+through `detection_queue`; see `AGENTS.md` for the authoritative design
+before changing anything that touches threading, the `detection_queue`
+hand-off, or the main detection path (`_process_frame()`).
 
 **Before considering anything done:**
 

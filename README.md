@@ -14,7 +14,7 @@ and then performs taxonomic classification to identify specific animal species.
 Developed with [Claude](https://claude.com), Anthropic's AI assistant,
 using Claude Code and the Claude Sonnet 5 model.
 
-![Sample detection: two mule deer identified by the two-stage AI pipeline, with species and confidence labels](assets/sample-detection.jpg)
+![Sample detection: two deer, one labeled with its species and confidence (Animal: Mule Deer, 0.98), the other only as an Animal (0.82)](assets/sample-detection.jpg)
 
 ## Core Features
 
@@ -54,8 +54,10 @@ upgrading setuptools to fix that instead removes pkg_resources itself
 in newer releases. requests>=2.33 (see requirements.txt) also requires
 Python>=3.10. Untested on 3.11.
 
-Dependencies: opencv-python-headless, PytorchWildlife, requests,
-configparser.
+Dependencies: opencv-python-headless, PytorchWildlife (with the torch
+packages it depends on) and requests, all pinned in requirements.txt,
+which also pins a few packages for compatibility (numpy, setuptools, ...)
+-- see the comments there. The configuration parser is Python's own.
 
 Hardware: i3 CPU or better; requires internet access for initial model
 downloads.
@@ -386,6 +388,7 @@ flowchart TD
 
     AI --> MD["Stage 1: MegaDetector<br/>per-class threshold filter (Animal/Person/Vehicle)"]
     MD -->|"class Animal, conf > species_threshold"| SC["Stage 2: species classifier<br/>(DFNE or SpeciesNet)"]
+    MD -->|"class Animal, conf at or below species_threshold"| Gate
     MD -->|"class Person / Vehicle"| Gate
     SC --> Gate["Alert decision gate<br/>(two-frame latch, see below)"]
 
@@ -448,6 +451,8 @@ of which ruff version happens to be installed.
 
 A GitHub Actions workflow (`.github/workflows/ci.yml`) runs the same
 lint/syntax checks and the test suite (on Python 3.10) on every push
-and pull request.
+and pull request, except one that changes only Markdown files or
+`LICENSE`: those get no CI run, so check the commands and paths in a
+documentation change by hand.
 
 ### EOF

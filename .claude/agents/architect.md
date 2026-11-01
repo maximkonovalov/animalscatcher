@@ -10,9 +10,10 @@ RTSP camera streams, runs a two-stage MegaDetectorV6 + DFNE/SpeciesNet
 pipeline, and alerts over Telegram. It runs on a Mac Mini 2018 via launchd.
 
 Read `AGENTS.md` first for any question touching threads or data flow — it
-is the authoritative architecture doc for this project's four internal
-worker threads (`camera_thread`, `ai_engine`, `summary_engine`,
-`cleanup_engine`), where each camera runs its own motion check and hands
+is the authoritative architecture doc for this project's four kinds of
+worker thread (`camera_thread`, one per camera, `ai_engine`,
+`summary_engine`, `cleanup_engine`), where each camera runs its own
+motion check and hands
 frames that show motion to `ai_engine` through `detection_queue` (one
 bounded queue shared by all cameras; when it is full the oldest frame is
 dropped and counted). Don't re-derive
@@ -40,9 +41,10 @@ these unless you have a specific, documented reason to break one:
   that a camera in constant motion crowds the others out (README, Motion
   Detection, has the replay) -- add a mechanism only for evidence the
   per-camera drop counts in the summary give.
-- SIGTERM/SIGINT drain `photo_executor` before exit; SIGUSR1 reopens log
-  file descriptors in place (for external log rotation) rather than
-  restarting the process.
+- SIGTERM/SIGINT cancel the uploads `photo_executor` has not started yet
+  (one already in flight finishes) rather than waiting for the whole
+  queue; SIGUSR1 reopens log file descriptors in place (for external log
+  rotation) rather than restarting the process.
 
 Before proposing a design, check `RELEASES.md`'s history — several past
 ideas were already tried, found wanting, and revised (e.g. v0.4's

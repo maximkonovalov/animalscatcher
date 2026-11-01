@@ -1,4 +1,4 @@
-"""Tests for the logging setup added in v0.10: propagation, and the
+"""Tests for the logging setup added in v0.11: propagation, and the
 PID file / SIGUSR1 reopen handler that let newsyslog rotate the
 launchd-redirected stdout/stderr files without a daemon restart.
 

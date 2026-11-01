@@ -39,7 +39,9 @@ setup/review rather than assuming a clean install:
 changes rather than starting a parallel one:
 
 - `test_config.py` — `load_config()` validation (missing file/section/key,
-  invalid numeric values, the `channels`/`rtsp_path` camera keys).
+  invalid numeric values, the `channels`/`rtsp_path` camera keys, the
+  classifier choice, the motion tunings' defaults and ranges) and the
+  `frame_interval` key it still tolerates but ignores.
 - `test_camera_thread.py` — RTSP URL construction (`_rtsp_url()`, incl.
   credential escaping), `_cam_id()` naming, and `camera_thread` itself,
   driven by a scripted fake capture: it opens the configured URL, queues

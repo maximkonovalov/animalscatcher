@@ -10,10 +10,10 @@ threshold_2 from ac.cfg after v0.18's startup warning.
 
 Changed:
   - The vehicle class is detected as it was before v0.18: _process_frame
-    logs every vehicle it sees, counts it for the summary and alerts on
-    one above threshold_2 (0.95 in the example config, so almost never),
-    and the summary's DETECTIONS block lists vehicles again. The code,
-    the tests (130 in all) and ac.cfg.example are v0.17's again.
+    logs every vehicle it sees and alerts on one above threshold_2 (0.95
+    in the example config, so almost never), and the summary's DETECTIONS
+    block, which counts alerts, lists vehicles again. The code, the tests
+    (130 in all) and ac.cfg.example are v0.17's again.
   - Why: the model looks at a frame before any class is considered, so
     ignoring one saves it nothing, and v0.18 cost the vehicle count and
     the alerts for no gain. What reaches the model is decided by the

@@ -348,7 +348,8 @@ def send_telegram_photo(photo_path, caption):
 # --- 4. ENGINE THREADS ---
 
 def cleanup_engine():
-    """Removes old snapshots every 24 hours."""
+    """Removes snapshots older than max_age_days: once at startup, then
+    every cleanup_interval hours."""
     while True:
         try:
             now = time.time()
