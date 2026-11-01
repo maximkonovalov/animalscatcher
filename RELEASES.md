@@ -1,6 +1,39 @@
 Release History
 ===============
 
+v0.18 - 2026-10-31
+------------------
+
+Vehicles are no longer detected: the AI looks for animals and people only.
+An existing ac.cfg works unchanged, but the threshold_2 line in it does
+nothing now and the daemon says so at startup.
+
+Added:
+  - Tests for it: a vehicle, or any class without a threshold, leaves no
+    log line, count or alert and registers no motion; a vehicle in the
+    same frame as an animal doesn't hide it; a new ac.cfg doesn't need
+    threshold_2 and an old one that has it still loads; the summary lists
+    animals and people only. 134 tests in all.
+
+Changed:
+  - The vehicle class is dropped from detection completely. MegaDetector
+    still reports it, but _process_frame ignores any class without a
+    threshold: no [DETECT] line, no alert, no count and no registered
+    motion. Before, a vehicle was logged whenever one was seen, counted in
+    the summary and alerted on above threshold_2 (0.95 in the example
+    config, so almost never).
+  - threshold_2, the vehicle threshold, is no longer required. An ac.cfg
+    that still has it works and the daemon logs a warning at startup, as
+    it does for frame_interval; remove the line. ac.cfg.example drops it.
+  - The summary's DETECTIONS block lists animals and people, not vehicles.
+  - It does not make the AI cheaper: the model still has to look at a
+    frame to find out that nothing but a vehicle is in it, and its own
+    per-frame log line still says "1 vehicle". In v0.17's first hour a
+    street camera flagging motion barely above the threshold kept the AI
+    busy for minutes on one vehicle, 9 frames in 30 seconds; that comes
+    from the motion check and the queue, which this release leaves alone.
+  - README, AGENTS.md and the QA brief describe it.
+
 v0.17 - 2026-10-31
 ------------------
 
