@@ -176,11 +176,24 @@ were not part of that calibration; a busier scene triggers more.
 
 **Tuning.** The summary sent every `summary_interval` hours has a MOTION
 block per camera: frames checked, how many showed motion, how many the AI
-analysed, how many were replaced by a newer frame before the AI got to
-them, the strongest change seen beside the threshold, and how long frames
-waited for the AI. A strongest change far below the threshold means that
-camera never triggers; one just above it means the threshold sits at the
-noise.
+analysed and how many of those had an animal on them, how many were
+replaced by a newer frame before the AI got to them, the strongest change
+seen beside the threshold, and how long frames waited for the AI. Animals
+are counted whether or not an alert follows (the alert gate also wants a
+second look, the cooldown past and a new position), so animals against
+frames analysed is how often a motion pays off. A strongest change far
+below the threshold means that camera never triggers; one just above it
+means the threshold sits at the noise.
+
+Motion is also written to the log, one line when a burst of it starts:
+
+    [2026-10-31 18:55:12,345] [MOTION] cam04: 0.350% of the frame changed (threshold 0.120%)
+
+Motion that comes again within 10 seconds of the last is the same burst, so
+a deer crossing the yard is one line rather than one per check. The
+summary's motion count is every check that showed motion, so it is larger
+than the number of lines. What the AI then finds in those frames is logged
+as `[DETECT]` lines.
 
 Nothing is analysed on a timer: a camera that sees no motion is never
 looked at, so an animal that stands perfectly still is not noticed. In the

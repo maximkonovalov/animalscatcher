@@ -76,6 +76,12 @@ def reset_animal_stat():
     ac.stats["Animal"] = 0
 
 
+@pytest.fixture(autouse=True)
+def fresh_motion_stats(monkeypatch):
+    """The per-camera counters behind the summary's MOTION block."""
+    monkeypatch.setitem(ac.stats, "motion", {})
+
+
 @pytest.fixture
 def capture_photo_submits(monkeypatch):
     """Replace photo_executor.submit with a synchronous recorder so
@@ -310,3 +316,56 @@ def test_a_sighting_is_not_confirmed_by_one_from_long_before(
 
     look(3610)          # ...confirmed by the look ten seconds before
     assert ac.stats["Animal"] == 1
+
+
+# --- animals counted for the summary's MOTION block -------------------------
+
+def animals_counted(cam_id="cam04"):
+    return ac.stats["motion"].get(cam_id, {}).get("animals", 0)
+
+
+def test_a_frame_with_an_animal_is_counted_even_when_it_does_not_alert(
+        frame, capture_photo_submits):
+    # A first sighting only registers motion for the next look -- no alert
+    # -- but the motion frame did have an animal on it.
+    run(FakeDetector([0.9], [0], [[10, 10, 50, 50]]), FakeClassifier(),
+        frame, ({}, {}, {}))
+
+    assert animals_counted() == 1
+    assert ac.stats["Animal"] == 0
+
+
+def test_a_frame_is_counted_once_however_many_animals_are_on_it(
+        frame, capture_photo_submits):
+    detector = FakeDetector([0.9, 0.8], [0, 0],
+                            [[10, 10, 30, 30], [50, 50, 90, 90]])
+
+    run(detector, FakeClassifier(), frame, ({}, {}, {}))
+
+    assert animals_counted() == 1
+
+
+@pytest.mark.parametrize("confidence, class_id", [
+    (0.3, 0),       # an animal, but below its threshold
+    (0.99, 1),      # a person
+    (0.99, 2),      # a vehicle
+])
+def test_a_frame_without_a_confident_animal_is_not_counted(
+        frame, capture_photo_submits, confidence, class_id):
+    detector = FakeDetector([confidence], [class_id], [[10, 10, 50, 50]])
+
+    run(detector, FakeClassifier(), frame, ({}, {}, {}))
+
+    assert animals_counted() == 0
+
+
+def test_animals_are_counted_per_camera(frame, capture_photo_submits):
+    animal = FakeDetector([0.9], [0], [[10, 10, 50, 50]])
+    nothing = FakeDetector([], [], [])
+
+    for cam_id in ("cam04", "cam05", "cam05"):
+        run(animal, FakeClassifier(), frame, ({}, {}, {}), cam_id)
+    run(nothing, FakeClassifier(), frame, ({}, {}, {}), "cam06")
+
+    assert [animals_counted(c) for c in ("cam04", "cam05", "cam06")] == [
+        1, 2, 0]

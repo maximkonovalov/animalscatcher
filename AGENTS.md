@@ -38,6 +38,11 @@ Each channel listed in `[CAMERA] channels` spawns its own dedicated thread.
   the AI nothing. `grab()` skips the BGR conversion on frames that aren't
   checked, because the camera threads measurably compete with `ai_engine`
   for CPU on the target hardware.
+* **Motion log:** The first check of a burst of motion -- no motion on that
+  camera for `MOTION_LOG_GAP` (10 s) before it -- is logged as
+  `[MOTION] cam04: 0.350% of the frame changed (threshold 0.120%)`. The
+  rest of the burst is counted (the summary's "motion") but not logged, so
+  the gap runs from the latest motion, not from where the burst began.
 * **Hand-off:** `pending_frames` (`PendingFrames`) holds at most one frame
   per camera, the newest: a new motion frame replaces one `ai_engine`
   hasn't picked up (counted as "replaced"), and `take()` serves the
@@ -84,12 +89,13 @@ alerting.
 A background observer that tracks stream health and detection counts. It
 provides a heartbeat to ensure the system is active. Also reports, per
 camera, how many frames were checked for motion, how many showed it, how
-many `ai_engine` analysed, how many were replaced by a newer frame before
-it got to them, the strongest change seen beside the motion threshold,
-and how long frames waited for the AI -- all cameras share one `ai_engine`
-thread, so this is both the visibility into whether it keeps up and the
-data for tuning the motion settings (see README's Motion Detection
-section).
+many `ai_engine` analysed (and how many of those had an animal on them --
+`_process_frame` counts that whether or not an alert follows), how many
+were replaced by a newer frame before it got to them, the strongest change
+seen beside the motion threshold, and how long frames waited for the AI --
+all cameras share one `ai_engine` thread, so this is both the visibility
+into whether it keeps up and the data for tuning the motion settings (see
+README's Motion Detection section).
 
 ### Cleanup Agent (`cleanup_engine`)
 A maintenance worker that keeps the host system stable.

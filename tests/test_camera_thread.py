@@ -3,6 +3,9 @@
 URL inside camera_thread), and for what a camera does with the frames it
 reads: check them for motion on its own, and hand over only the frame that
 shows it."""
+import logging
+import time
+
 import numpy as np
 import pytest
 
@@ -75,20 +78,41 @@ CAM = 12
 CAM_ID = "cam12"
 
 
+class ScriptedClock:
+    """Stands in for the `time` module as ac sees it: time moves only when
+    a frame is grabbed, so a test says how far apart the frames are instead
+    of waiting for it. Everything else, and logging's own clock, is real."""
+
+    def __init__(self, start=1000.0):
+        self.now = start
+
+    def time(self):
+        return self.now
+
+    def sleep(self, seconds):
+        pass
+
+    def __getattr__(self, name):
+        return getattr(time, name)
+
+
 class ScriptedCapture:
     """A capture that hands out the scripted frames, one grab() each, and
     ends the thread when they run out. A None entry is a failed grab -- the
-    stream dropping."""
+    stream dropping. Each grab() moves `clock` on by `spacing` seconds."""
 
-    def __init__(self, frames):
+    def __init__(self, frames, clock, spacing=0.25):
         self._script = list(frames)
         self._current = None
+        self._clock = clock
+        self._spacing = spacing
         self.retrieved = 0
 
     def grab(self):
         if not self._script:
             raise _StopThread
         self._current = self._script.pop(0)
+        self._clock.now += self._spacing
         return self._current is not None
 
     def retrieve(self):
@@ -104,11 +128,13 @@ def camera(monkeypatch, tmp_path):
     """Runs camera_thread for channel 12 on a scripted capture and returns
     (capture, the PendingFrames it fed). Motion is checked on every frame
     against the previous one (lookback 0, no blur) unless a test says
-    otherwise."""
+    otherwise, and the frames arrive `spacing` (a quarter of a second)
+    apart."""
     pending = ac.PendingFrames()
+    clock = ScriptedClock()
     monkeypatch.setattr(ac, "pending_frames", pending)
     monkeypatch.setattr(ac, "BASE_OUTPUT_FOLDER", str(tmp_path))
-    monkeypatch.setattr(ac.time, "sleep", lambda s: None)
+    monkeypatch.setattr(ac, "time", clock)
     for name, value in dict(THRESHOLD=0.02, PIXEL_DELTA=25, CHECK_INTERVAL=1,
                             LOOKBACK=0.0, BLUR=1).items():
         monkeypatch.setattr(ac, f"MOTION_{name}", value)
@@ -116,10 +142,10 @@ def camera(monkeypatch, tmp_path):
     monkeypatch.setitem(ac.stats, "motion", {})
     monkeypatch.setitem(ac.stats, "streams", {})
 
-    def run(frames, **tuning):
+    def run(frames, spacing=0.25, **tuning):
         for name, value in tuning.items():
             monkeypatch.setattr(ac, f"MOTION_{name.upper()}", value)
-        cap = ScriptedCapture(frames)
+        cap = ScriptedCapture(frames, clock, spacing)
         monkeypatch.setattr(ac.cv2, "VideoCapture", lambda url, backend: cap)
         with pytest.raises(_StopThread):
             ac.camera_thread(CAM)
@@ -249,3 +275,80 @@ def test_the_configured_threshold_decides_what_counts_as_motion(camera):
     ac.stats["motion"].clear()
     camera([quiet(), visitor()], threshold=0.02)
     assert ac.stats["motion"][CAM_ID]["motion"] == 1
+
+
+# --- the motion log ---------------------------------------------------------
+
+@pytest.fixture
+def log_lines():
+    """What ac's logger writes. It doesn't propagate to the root logger, so
+    caplog can't see it."""
+    lines = []
+
+    class Collect(logging.Handler):
+        def emit(self, record):
+            lines.append(record.getMessage())
+
+    handler = Collect()
+    ac.logger.addHandler(handler)
+    yield lines
+    ac.logger.removeHandler(handler)
+
+
+def still(frame, seconds, spacing=0.25):
+    """Copies of `frame` covering `seconds` of the stream."""
+    return [frame] * round(seconds / spacing)
+
+
+def test_a_still_scene_logs_no_motion(camera, log_lines):
+    camera([quiet() for _ in range(10)])
+
+    assert log_lines == []
+
+
+def test_motion_is_logged_with_its_camera_size_and_threshold(
+        camera, log_lines):
+    camera([quiet(), visitor()])
+
+    # The visitor covers 25% of the frame; the threshold is the fixture's 2%.
+    assert log_lines == [
+        "[MOTION] cam12: 25.000% of the frame changed (threshold 2.000%)"]
+
+
+def test_only_the_first_motion_of_a_burst_is_logged(camera, log_lines):
+    # The visitor comes and goes: every check after the first sees a change
+    # too, and each is counted, but the log gets one line.
+    camera([quiet(), visitor(), quiet(), visitor(), quiet()])
+
+    assert ac.stats["motion"][CAM_ID]["motion"] == 4
+    assert len(log_lines) == 1
+
+
+def test_motion_after_a_quiet_spell_is_a_new_event(camera, log_lines):
+    # Twelve seconds without a change -- longer than MOTION_LOG_GAP --
+    # and then the visitor is gone.
+    shows_visitor = visitor()
+    camera([quiet(), shows_visitor] + still(shows_visitor, 12) + [quiet()])
+
+    assert ac.stats["motion"][CAM_ID]["motion"] == 2
+    assert len(log_lines) == 2
+
+
+def test_motion_within_the_gap_is_still_the_same_event(camera, log_lines):
+    shows_visitor = visitor()
+    camera([quiet(), shows_visitor] + still(shows_visitor, 5) + [quiet()])
+
+    assert ac.stats["motion"][CAM_ID]["motion"] == 2
+    assert len(log_lines) == 1
+
+
+def test_an_event_lasts_as_long_as_motion_keeps_coming(camera, log_lines):
+    # A change every 6 seconds for 18: each is within the gap of the one
+    # before, though the last is far from the first -- the gap runs from
+    # the latest motion, not from where the event began.
+    gone, here = quiet(), visitor()
+    camera([gone, here] + still(here, 5.75) + [gone] + still(gone, 5.75)
+           + [here] + still(here, 5.75) + [gone])
+
+    assert ac.stats["motion"][CAM_ID]["motion"] == 4
+    assert len(log_lines) == 1

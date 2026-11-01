@@ -43,15 +43,18 @@ changes rather than starting a parallel one:
 - `test_camera_thread.py` — RTSP URL construction (`_rtsp_url()`, incl.
   credential escaping), `_cam_id()` naming, and `camera_thread` itself,
   driven by a scripted fake capture: it opens the configured URL, hands
-  over only the frame that shows motion, checks every Nth frame, and starts
-  its comparison afresh after a dropped stream.
+  over only the frame that shows motion, checks every Nth frame, starts
+  its comparison afresh after a dropped stream, and logs the first motion
+  of each burst (a fake clock stands in for `time`, so the 10 s gap costs
+  nothing to test).
 - `test_pending_frames.py` — `PendingFrames`, the per-camera hand-off to
   `ai_engine`: newest frame wins, cameras served in turn, and nothing lost
   or duplicated under concurrent offers.
 - `test_motion_detector.py` — `MotionDetector`: threshold, pixel delta and
   lookback sensitivity, largest-patch (not total-area) counting, reset.
 - `test_motion_report.py` — the summary's per-camera MOTION block.
-- `test_process_frame.py` — the core detect→classify→label→alert path.
+- `test_process_frame.py` — the core detect→classify→label→alert path,
+  and the per-camera count of frames with an animal.
 - `test_classify_speciesnet.py` — SpeciesNet backend adaptation.
 - `test_logging_setup.py` — logging/log-reopen setup.
 - `test_redact.py` — credential redaction (`ac._redact`), including the

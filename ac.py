@@ -301,8 +301,8 @@ stats = {
 }
 
 def _new_motion_stats():
-    return {"checks": 0, "motion": 0, "analysed": 0, "replaced": 0,
-            "peak": 0.0, "wait_sum": 0.0, "wait_max": 0.0}
+    return {"checks": 0, "motion": 0, "analysed": 0, "animals": 0,
+            "replaced": 0, "peak": 0.0, "wait_sum": 0.0, "wait_max": 0.0}
 
 def _motion_stats_for(cam_id):
     """A camera's counters since the last summary. Call with stats_lock
@@ -385,8 +385,8 @@ def _motion_report(motion_stats):
         cam_id = _cam_id(channel)
         m = motion_stats.get(cam_id) or _new_motion_stats()
         line = (f"- {cam_id}: {m['checks']} checks, {m['motion']} motion, "
-                f"{m['analysed']} analysed, {m['replaced']} replaced by a "
-                f"newer frame\n"
+                f"{m['analysed']} analysed ({m['animals']} with an animal), "
+                f"{m['replaced']} replaced by a newer frame\n"
                 f"  strongest change {m['peak']:.3%} (threshold "
                 f"{MOTION_THRESHOLD:.3%})")
         if m['analysed']:
@@ -635,8 +635,8 @@ def _load_speciesnet_classifier():
 def _process_frame(cam_id, frame, detector, classifier, names, colors,
                    last_det, motion_val, last_box, classify_fn=_classify_dfne):
     """Runs detection (and species classification) on one frame that showed
-    motion, annotates it, and fires an alert for any new, non-static
-    detection."""
+    motion, annotates it, counts it for the summary if an animal is on it,
+    and fires an alert for any new, non-static detection."""
     results = detector.single_image_detection(frame)
     det = results.get("detections")
     seen = {0: False, 1: False, 2: False}
@@ -700,6 +700,12 @@ def _process_frame(cam_id, frame, detector, classifier, names, colors,
                                    f"on {cam_id} at ({x1},{y1})")
     for c in [0, 1, 2]:
         motion_val[(cam_id, c)] = seen[c]
+    if seen[0]:
+        # One more motion frame with an animal on it, whatever the alert
+        # gate made of it -- what the summary's MOTION block reports as how
+        # often the motion check pays off.
+        with stats_lock:
+            _motion_stats_for(cam_id)["animals"] += 1
 
 def _clean_stale_model_downloads():
     """MegaDetectorV6's weights are fetched via the `wget` package, which
