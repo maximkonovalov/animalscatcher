@@ -46,6 +46,32 @@ numpy==1.26.4
 # collection. 2.2.2 is also the last torch with Intel-Mac wheels, i.e.
 # what this project is actually developed and deployed against;
 # torchvision 0.17.2 and torchaudio 2.2.2 are its matching releases.
+#
+# Dependabot flags torch 2.2.2 (nine advisories, one Critical) and, each time
+# one of them gains a fix, opens a security-update PR that bumps torch alone
+# (2.13.0 on 2026-10-31: CI failed, the auto-close workflow closed it). That
+# can't be merged, and no bump fixes it for this deployment: the newest
+# torch, torchvision and torchaudio on PyPI with a macOS x86_64 wheel are
+# exactly the pins below (newer releases ship macosx_14_0_arm64 only, and the
+# latest torch needs Python >= 3.11), so a bump makes `pip install -r
+# requirements.txt` fail on the Intel Mac mini this runs on. Checked each
+# advisory individually rather than assuming:
+#   - CVE-2025-3730, -3001, -2999, -3000, -2953, -2998 and -2149 are
+#     local-only denial-of-service or memory-corruption bugs in single ops
+#     (ctc_loss, lstm_cell, unpack_sequence, jit.script, mkldnn_max_pool2d,
+#     pad_packed_sequence, the quantized Sigmoid) that need attacker-chosen
+#     arguments to functions this daemon never calls: its only input is camera
+#     frames, through MegaDetector's and the classifiers' inference.
+#   - CVE-2025-2148 (network vector, Low) is in torch.ops.profiler internals,
+#     which nothing here touches.
+#   - CVE-2025-32434 (Critical): torch.load(weights_only=True) can still run
+#     code from a malicious checkpoint. ac.py never calls torch.load, but the
+#     libraries it uses do, on the model weights they download on first run
+#     (MegaDetector's from Zenodo, SpeciesNet's from Kaggle, DFNE's from wherever
+#     PytorchWildlife fetches them), so the way in is a compromised download
+#     source or a broken TLS connection to one. A bump isn't available as a
+#     mitigation (above), so the weights are what to protect: don't point
+#     speciesnet_model at a file of unknown origin.
 torch==2.2.2
 torchvision==0.17.2
 torchaudio==2.2.2
@@ -59,11 +85,14 @@ torchaudio==2.2.2
 #
 # Dependabot will keep flagging this version for CVE-2025-47273,
 # CVE-2024-6345, and CVE-2022-40897 (all High) plus CVE-2026-59890
-# (Moderate) -- checked each advisory individually rather than assuming:
-# all four require actually invoking setuptools' deprecated
+# (Moderate), and since 2026-10-23 for GHSA-xmj3-9gf7-h52w (Low) -- checked
+# each advisory individually rather than assuming:
+# the first four require actually invoking setuptools' deprecated
 # PackageIndex/easy_install download machinery against an untrusted
 # package index (the first three), or building this project's own sdist
-# to publish it (the fourth). Nothing here does either -- this pin only
+# to publish it (the fourth); the fifth needs a crafted wheel fed to
+# setuptools' legacy Wheel.install_as_egg on Windows, and this runs on
+# macOS and Linux. Nothing here does any of it -- this pin only
 # exists for yolov5's passive `import pkg_resources`, and deploy.sh's
 # `pip install -r requirements.txt` goes through pip's own modern
 # installer, never setuptools' legacy download path. Bumping past
