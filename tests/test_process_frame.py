@@ -250,3 +250,63 @@ def test_species_classification_crop_padding_clamps_to_frame_bounds(
     height, width = classifier.last_crop_shape[:2]
     assert 0 < height <= frame.shape[0]
     assert 0 < width <= frame.shape[1]
+
+
+# --- the two-frame latch when frames only follow motion --------------------
+
+def test_a_recent_latch_is_kept(monkeypatch):
+    monkeypatch.setattr(ac, "CONFIRM_WINDOW", 30)
+    motion_val = {("cam04", 0): True}
+    last_look = {"cam04": 100.0}
+
+    ac._expire_stale_latch(motion_val, last_look, "cam04", 125.0)
+
+    assert motion_val[("cam04", 0)] is True
+    assert last_look["cam04"] == 125.0
+
+
+def test_an_old_latch_is_forgotten_for_that_camera_only(monkeypatch):
+    monkeypatch.setattr(ac, "CONFIRM_WINDOW", 30)
+    motion_val = {("cam04", 0): True, ("cam04", 1): True,
+                  ("cam05", 0): True}
+    last_look = {"cam04": 100.0, "cam05": 100.0}
+
+    ac._expire_stale_latch(motion_val, last_look, "cam04", 131.0)
+
+    assert motion_val[("cam04", 0)] is False
+    assert motion_val[("cam04", 1)] is False
+    assert motion_val[("cam05", 0)] is True        # another camera's latch
+    assert last_look["cam04"] == 131.0
+
+
+def test_the_first_look_at_a_camera_clears_nothing(monkeypatch):
+    monkeypatch.setattr(ac, "CONFIRM_WINDOW", 30)
+    motion_val = {}
+    last_look = {}
+
+    ac._expire_stale_latch(motion_val, last_look, "cam04", 5000.0)
+
+    assert motion_val == {}
+    assert last_look == {"cam04": 5000.0}
+
+
+def test_a_sighting_is_not_confirmed_by_one_from_long_before(
+        frame, capture_photo_submits, monkeypatch):
+    # Frames used to arrive around the clock; now only motion brings one,
+    # so "the previous frame" can be an hour old. It must not count.
+    monkeypatch.setattr(ac, "CONFIRM_WINDOW", 30)
+    detector = FakeDetector([0.9], [0], [[10, 10, 50, 50]])
+    classifier = FakeClassifier()
+    state = ({}, {}, {})
+    last_look = {}
+
+    def look(at):
+        ac._expire_stale_latch(state[1], last_look, "cam04", at)
+        run(detector, classifier, frame, state)
+
+    look(0)             # a sighting, awaiting its confirmation
+    look(3600)          # an hour later: a first sighting again
+    assert ac.stats["Animal"] == 0
+
+    look(3610)          # ...confirmed by the look ten seconds before
+    assert ac.stats["Animal"] == 1

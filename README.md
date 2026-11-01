@@ -31,6 +31,10 @@ Two-Stage AI Pipeline:
         2498-taxa classifier, for regions DFNE doesn't cover well). See
         Species Classifier below.
 
+* Motion-Triggered Analysis: every camera is watched on its own with a cheap
+frame-differencing check, and only a frame that shows motion goes to the AI.
+See Motion Detection below.
+
 * Smart Alerts: Sends labeled snapshots to a Telegram bot with configurable
 cooldowns to prevent notification flooding.
 
@@ -66,7 +70,7 @@ following sections are defined:
 | CAMERA    | user, pass, ip, port, channels, rtsp_path | RTSP credentials, network address, and which streams to open (see Camera Setup below). |
 | TELEGRAM  | token, chat_id | Bot API token and target chat ID for alerts. |
 | PATHS     | base_output_folder | Storage location for snapshots. |
-| DETECTION | threshold_0-2, cooldown, frame_interval, motion_threshold, motion_check_interval, summary_interval, species_threshold, static_tolerance, classifier, speciesnet_model, crop_padding | Confidence thresholds, alert frequency, and species classifier choice. |
+| DETECTION | threshold_0-2, cooldown, confirm_window, motion_check_interval, motion_threshold, motion_pixel_delta, motion_lookback, summary_interval, species_threshold, static_tolerance, classifier, speciesnet_model, crop_padding | Confidence thresholds, alert frequency, motion detection (see Motion Detection below), and species classifier choice. |
 | CLEANUP | max_age_days, cleanup_interval | Retention policy for snapshots. |
 
 `ac.cfg` holds RTSP and Telegram credentials in plaintext and must never be
@@ -118,6 +122,72 @@ To check a URL before starting the daemon, try it with `ffprobe` (the
 daemon also forces RTSP over TCP):
 
     ffprobe -rtsp_transport tcp "rtsp://user:pass@192.168.1.10:554/Streaming/Channels/102"
+
+## Motion Detection
+
+Every camera is watched on its own. Its `camera_thread` compares frames of
+that camera's stream with each other and hands only a frame that shows
+motion to the AI: a camera where nothing moves costs the AI nothing, and
+what one camera sees never changes what another gets (each has its own
+detector, its own waiting slot and its own alert state).
+
+Every `motion_check_interval`-th frame (counted in raw frames, so 5 on a
+20 fps stream is every quarter second) is shrunk to 160x120, turned gray and
+blurred, then compared with a reference frame -- the previous check, or the
+frame from `motion_lookback` seconds earlier. A pixel counts as changed when
+its brightness differs by more than `motion_pixel_delta` (0-255), and the
+frame shows motion when the largest connected patch of changed pixels
+covers more than `motion_threshold` of the frame. The frame just checked,
+the later of the two compared, is the one the AI analyses. Only the largest
+patch counts, not the total changed area, so scattered noise doesn't add up
+to motion and a small threshold stays usable.
+
+The AI is a single thread shared by every camera -- one copy of the models
+is all the RAM of a small machine allows -- so each camera has one waiting
+slot. A newer frame with motion replaces an older one the AI hasn't reached
+yet, and the AI serves the cameras that have a frame waiting in turn. It
+never works through a backlog of stale frames, and a camera with constant
+motion can't crowd out the others.
+
+| Key | Default | Effect |
+| :--- | :--- | :--- |
+| `motion_threshold` | 0.0012 | Smallest patch of changed pixels that counts as motion, as a fraction of the frame (0.001 = 0.1%). Lower is more sensitive. |
+| `motion_pixel_delta` | 20 | How much a pixel's brightness (0-255) must change to count as changed. Lower is more sensitive, and noisier at dusk and dawn. |
+| `motion_check_interval` | 5 | Raw frames between checks (a quarter second on a 20 fps stream). Higher costs less CPU. |
+| `motion_lookback` | 2 | Seconds back to the reference frame; 0 compares with the previous check. A longer lookback makes slow movers visible, at the price of motion registering for about that long after something stops or leaves. |
+| `confirm_window` | 30 | Seconds within which a second sighting confirms the first for the alert gate (see Project Structure). Keep it longer than the AI takes to come round to a camera again: about 4 seconds per camera with motion waiting. |
+
+Every camera uses the same tunings. `ac.py` refuses to start, naming the key,
+for a value out of range.
+
+**Where the defaults come from.** They were calibrated on camera 4's footage
+(20 fps): three deer visits of 15 to 117 seconds, and 50 minutes of quiet day,
+dusk, night and dawn. A small or distant animal changes very little of the
+frame -- the animals there were a few pixels of the 160x120 comparison image,
+and a deer in view changed roughly 0.15-0.3% of it while it moved, against
+under 0.1% for a quiet day or night scene -- which is why the threshold is a fraction
+of a percent, not the 2% an earlier version used, and why comparing with a
+frame two seconds back beats comparing with the previous check. Replayed
+against the model's own detections of that footage, these settings alerted
+on every visit in which the animal moved, even with another camera taking
+half of the AI's time, and a quiet camera used about 2% of the AI on average (about
+9% around dusk, when the lighting and the IR filter change). Cameras 5 and 6
+were not part of that calibration; a busier scene triggers more.
+
+**Tuning.** The summary sent every `summary_interval` hours has a MOTION
+block per camera: frames checked, how many showed motion, how many the AI
+analysed, how many were replaced by a newer frame before the AI got to
+them, the strongest change seen beside the threshold, and how long frames
+waited for the AI. A strongest change far below the threshold means that
+camera never triggers; one just above it means the threshold sits at the
+noise.
+
+Nothing is analysed on a timer: a camera that sees no motion is never
+looked at, so an animal that stands perfectly still is not noticed. In the
+calibration footage, one 50-second visit by an animal that hardly moved never
+triggered at all, and the old every-Nth-frame sampling would have caught it.
+`frame_interval`, that sampling, is gone; an `ac.cfg` that still has it
+works, and the daemon logs a warning that it does nothing.
 
 ## Installation & Usage
 
@@ -238,7 +308,8 @@ taxa.
 ai_engine: The brain of the system; handles detection and classification.
 
 camera_thread: Manages one RTSP stream per channel in `[CAMERA] channels`
-(see Camera Setup above).
+(see Camera Setup above) and checks it for motion on its own (see Motion
+Detection above); only a frame that shows motion is passed on.
 
 summary_engine: Sends periodic health reports and detection stats to Telegram.
 
@@ -256,9 +327,9 @@ output folder:
 
 ```mermaid
 flowchart TD
-    C["camera_thread<br/>(one per configured channel)"] -->|sampled frame| Q
+    C["camera_thread<br/>(one per configured channel,<br/>each with its own motion check)"] -->|frame that shows motion| Q
 
-    Q[("detection_queue<br/>priority: motion frames before frame_interval frames")] --> AI(["ai_engine"])
+    Q[("pending_frames<br/>one waiting frame per camera,<br/>newest wins, cameras served in turn")] --> AI(["ai_engine"])
 
     AI --> MD["Stage 1: MegaDetector<br/>per-class threshold filter (Animal/Person/Vehicle)"]
     MD -->|"class Animal, conf > species_threshold"| SC["Stage 2: species classifier<br/>(DFNE or SpeciesNet)"]
@@ -282,13 +353,14 @@ flowchart TD
 
 The alert decision gate isn't a single-frame decision: a class has to
 show up on two consecutive processed frames for the same (cam_id, class)
-pair, with cooldown elapsed and the box not flagged as static/stuck,
-before Telegram actually gets a photo. Cooldown and the static filter
+pair (at most `confirm_window` seconds apart), with cooldown elapsed and
+the box not flagged as static/stuck, before Telegram actually gets a
+photo. Cooldown and the static filter
 are tracked independently per camera/class pair, not globally:
 
 ```mermaid
 flowchart TD
-    A["Detection for (cam_id, class)<br/>on this processed frame"] --> B{"Was this (cam_id, class)<br/>also seen on the PREVIOUS<br/>processed frame?"}
+    A["Detection for (cam_id, class)<br/>on this processed frame"] --> B{"Was this (cam_id, class)<br/>also seen on the PREVIOUS<br/>processed frame<br/>(within confirm_window)?"}
     B -->|no| L["Latch only: record seen,<br/>no alert yet"]
     B -->|yes| C{"time since last_det[cam_id, class]<br/>> cooldown?"}
     C -->|no| D["Suppressed: still in cooldown"]

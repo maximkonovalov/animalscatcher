@@ -26,38 +26,35 @@ Each channel listed in `[CAMERA] channels` spawns its own dedicated thread.
   URL embeds the credentials, so it goes straight to `cv2.VideoCapture`
   and is never logged. See README's Camera Setup section.
 * **Resilience:** If a stream drops, the agent enters a retry loop.
-* **Sampling:** To save CPU, only every $N$-th frame (via `frame_interval`)
-  is sent to the shared `detection_queue` -- *plus* any frame where
-  `_frame_changed()` detects motion (via `motion_threshold`), checked
-  every `motion_check_interval`-th raw frame (default 3; cheap per
-  call, but on constrained hardware doing it on literally every raw
-  frame across every camera thread continuously measurably competed
-  with `ai_engine` for CPU -- observed as rising inference time and
-  falling CPU idle after motion detection first shipped). This is
-  additive, not a replacement: `frame_interval` alone can miss a fast
-  animal's entire visible window between samples, so motion detection
-  adds responsiveness on top of the existing periodic baseline rather
-  than replacing it.
-* **Queue priority:** `detection_queue` is a `PriorityQueue`, not FIFO
-  -- motion-triggered frames (priority 0) are drained by the AI Agent
-  before frame_interval-only ones (priority 1) waiting alongside them,
-  via a `(priority, seq, cam_id, frame)` tuple where `seq` is a
-  strictly increasing tie-breaker (needed so same-priority comparisons
-  never fall through to comparing `frame`, a numpy array, which raises).
-  This only affects drain order for frames already queued, though --
-  `put_nowait()` on an already-full queue still drops the new frame
-  regardless of its priority; it doesn't evict a lower-priority one to
-  make room.
+* **Motion detection:** Each camera runs its own `MotionDetector` (the
+  tunings are the `[DETECTION]` motion keys, the same for every camera),
+  and nothing one camera does affects another. Every `motion_check_interval`-th raw
+  frame is compared with a reference frame (the previous check, or the one
+  `motion_lookback` seconds earlier): shrunk to 160x120, gray, blurred,
+  `motion_pixel_delta` per pixel, and the largest connected patch of
+  changed pixels must cover more than `motion_threshold` of the frame. Only
+  a frame that shows motion -- the later of the two compared -- goes on to
+  the AI; nothing is sampled on a timer, so a camera with no motion costs
+  the AI nothing. `grab()` skips the BGR conversion on frames that aren't
+  checked, because the camera threads measurably compete with `ai_engine`
+  for CPU on the target hardware.
+* **Hand-off:** `pending_frames` (`PendingFrames`) holds at most one frame
+  per camera, the newest: a new motion frame replaces one `ai_engine`
+  hasn't picked up (counted as "replaced"), and `take()` serves the
+  cameras that have a frame waiting in turn. That replaced the shared
+  `PriorityQueue`, where one busy camera could fill every slot, frames
+  were dropped on arrival whatever their priority, and what the AI looked
+  at was up to a full queue old.
 
 ### AI Inference Agent (`ai_engine`)
 The core "brain" of the system. Before loading any model, it clears out
 any `MDV6*.tmp` partial download left behind in the working directory by
 a previous, interrupted weights download (MegaDetectorV6 fetches its
 weights via the `wget` package, which doesn't clean these up itself).
-It then drains the `detection_queue` via `detection_queue.get()` in
-priority order, not FIFO (see Camera Agent above); each frame is handed
-to `_process_frame()`, which does the actual detection, classification,
-and alerting.
+It then takes frames from `pending_frames.take()`, one camera at a time
+in turn (see Camera Agent above); each frame is handed to
+`_process_frame()`, which does the actual detection, classification, and
+alerting.
 1. **Detection:** Uses **MegaDetectorV6** for Animals, People, or
    Vehicles. Every raw detection is logged with its confidence (before
    threshold filtering), independent of whether it ends up alerting.
@@ -74,19 +71,25 @@ and alerting.
    `(label, confidence)` pair `_process_frame()` actually uses -- see
    README's Species Classifier section.
 3. **Labeling:** Annotates the frame with type, species, and confidence.
-4. **Alerting:** If motion is confirmed (past `cooldown`) and the
-   detection isn't static (within `static_tolerance`, also config-driven),
-   it triggers an asynchronous Telegram upload.
+4. **Alerting:** If the sighting is confirmed by the previous look at the
+   same camera and class (at most `confirm_window` seconds earlier --
+   `_expire_stale_latch()` enforces that, since frames now only follow
+   motion and the previous one can be hours old), `cooldown` has passed,
+   and the detection isn't static (within `static_tolerance`, also
+   config-driven), it triggers an asynchronous Telegram upload.
 5. **Isolation:** A per-frame error is caught, logged, and skipped rather
    than killing the agent — one bad frame doesn't take down detection.
 
 ### Summary Agent (`summary_engine`)
 A background observer that tracks stream health and detection counts. It
-provides a heartbeat to ensure the system is active. Also reports how
-many sampled frames were dropped because `detection_queue` was full --
-all cameras share one `ai_engine` thread, and MegaDetector's per-frame
-CPU cost means sampling can outpace processing; this is the visibility
-into that, rather than it failing silently.
+provides a heartbeat to ensure the system is active. Also reports, per
+camera, how many frames were checked for motion, how many showed it, how
+many `ai_engine` analysed, how many were replaced by a newer frame before
+it got to them, the strongest change seen beside the motion threshold,
+and how long frames waited for the AI -- all cameras share one `ai_engine`
+thread, so this is both the visibility into whether it keeps up and the
+data for tuning the motion settings (see README's Motion Detection
+section).
 
 ### Cleanup Agent (`cleanup_engine`)
 A maintenance worker that keeps the host system stable.
@@ -102,9 +105,10 @@ A maintenance worker that keeps the host system stable.
 
 ## 3. Data Flow Diagram
 
-1. **RTSP Stream** -> **Camera Agent** (Frame Sampling)
-2. **Camera Agent** -> **Shared Queue** (Thread-safe buffer)
-3. **Shared Queue** -> **AI Agent** (Inference & Labeling)
+1. **RTSP Stream** -> **Camera Agent** (motion check, per camera)
+2. **Camera Agent** -> **`pending_frames`** (frames that show motion; one
+   waiting frame per camera)
+3. **`pending_frames`** -> **AI Agent** (Inference & Labeling)
 4. **AI Agent** -> **Telegram API** (User Notification)
 5. **AI Agent** -> **Local Storage** (Snapshot persistence)
 

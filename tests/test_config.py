@@ -55,7 +55,8 @@ def test_valid_config_returns_expected_values(tmp_path):
     assert cfg["telegram_chat_id"] == "-100123456"
     assert cfg["thresholds"] == {0: 0.45, 1: 0.75, 2: 0.95}
     assert cfg["cooldown"] == 20
-    assert cfg["frame_interval"] == 10
+    # Still in VALID_CFG as it is in every existing ac.cfg; no longer used.
+    assert cfg["frame_interval_set"] is True
     assert cfg["summary_interval"] == 6
     assert cfg["species_threshold"] == 0.45
     assert cfg["static_tolerance"] == 0.03
@@ -64,8 +65,11 @@ def test_valid_config_returns_expected_values(tmp_path):
     assert cfg["classifier"] == "dfne"
     assert cfg["speciesnet_model"] == "kaggle:google/speciesnet/pyTorch/v4.0.3a/1"
     assert cfg["crop_padding"] == 0.15
-    assert cfg["motion_threshold"] == 0.02
-    assert cfg["motion_check_interval"] == 3
+    assert cfg["motion_threshold"] == 0.0012
+    assert cfg["motion_pixel_delta"] == 20
+    assert cfg["motion_check_interval"] == 5
+    assert cfg["motion_lookback"] == 2.0
+    assert cfg["confirm_window"] == 30.0
 
 
 def test_missing_file_raises_systemexit_with_path(tmp_path):
@@ -278,3 +282,75 @@ def test_unreadable_or_missing_file_error_is_not_a_bare_traceback(tmp_path):
         except (configparser.Error, ValueError):
             pytest.fail("load_config leaked a raw config exception "
                        "instead of raising SystemExit")
+
+
+# --- motion tunings --------------------------------------------------------
+
+def with_detection_keys(extra):
+    """VALID_CFG with extra lines appended to its [DETECTION] section."""
+    return VALID_CFG.replace("static_tolerance = 0.03\n",
+                             f"static_tolerance = 0.03\n{extra}")
+
+
+def test_frame_interval_is_no_longer_required(tmp_path):
+    # Frames reach the AI when motion is detected, not every Nth frame, so
+    # a new ac.cfg has no use for the key that used to be mandatory.
+    assert "frame_interval = 10\n" in VALID_CFG
+    path = write_cfg(tmp_path, VALID_CFG.replace("frame_interval = 10\n", ""))
+
+    cfg = ac.load_config(path)
+
+    assert cfg["frame_interval_set"] is False
+
+
+def test_motion_tunings_are_read_from_detection(tmp_path):
+    path = write_cfg(tmp_path, with_detection_keys(
+        "motion_threshold = 0.004\n"
+        "motion_pixel_delta = 15\n"
+        "motion_check_interval = 5\n"
+        "motion_lookback = 1.5\n"
+        "confirm_window = 45\n"))
+
+    cfg = ac.load_config(path)
+
+    assert cfg["motion_threshold"] == 0.004
+    assert cfg["motion_pixel_delta"] == 15
+    assert cfg["motion_check_interval"] == 5
+    assert cfg["motion_lookback"] == 1.5
+    assert cfg["confirm_window"] == 45.0
+
+
+@pytest.mark.parametrize("line, key", [
+    ("motion_threshold = 1\n", "motion_threshold"),
+    ("motion_threshold = -0.01\n", "motion_threshold"),
+    ("motion_pixel_delta = 0\n", "motion_pixel_delta"),
+    ("motion_pixel_delta = 255\n", "motion_pixel_delta"),
+    ("motion_check_interval = 0\n", "motion_check_interval"),
+    ("motion_lookback = -1\n", "motion_lookback"),
+    ("motion_lookback = 61\n", "motion_lookback"),
+    ("confirm_window = 0\n", "confirm_window"),
+])
+def test_out_of_range_motion_values_name_the_key(tmp_path, line, key):
+    path = write_cfg(tmp_path, with_detection_keys(line))
+
+    with pytest.raises(SystemExit) as exc_info:
+        ac.load_config(path)
+
+    message = str(exc_info.value)
+    assert key in message
+    assert "ac.cfg.example" in message
+
+
+@pytest.mark.parametrize("line", [
+    "motion_threshold = lots\n",
+    "motion_pixel_delta = 12.5\n",
+    "motion_lookback = soon\n",
+    "confirm_window = soon\n",
+])
+def test_non_numeric_motion_values_raise_friendly_systemexit(tmp_path, line):
+    path = write_cfg(tmp_path, with_detection_keys(line))
+
+    with pytest.raises(SystemExit) as exc_info:
+        ac.load_config(path)
+
+    assert "ac.cfg.example" in str(exc_info.value)

@@ -41,12 +41,16 @@ changes rather than starting a parallel one:
 - `test_config.py` — `load_config()` validation (missing file/section/key,
   invalid numeric values, the `channels`/`rtsp_path` camera keys).
 - `test_camera_thread.py` — RTSP URL construction (`_rtsp_url()`, incl.
-  credential escaping), `_cam_id()` naming, and `camera_thread` opening
-  the configured URL.
-- `test_detection_queue.py` — `PriorityQueue` ordering and the
-  `(priority, seq, cam_id, frame)` tie-breaking that exists specifically so
-  two same-priority entries never fall through to comparing a numpy frame.
-- `test_frame_changed.py` — motion detection (`_frame_changed()`).
+  credential escaping), `_cam_id()` naming, and `camera_thread` itself,
+  driven by a scripted fake capture: it opens the configured URL, hands
+  over only the frame that shows motion, checks every Nth frame, and starts
+  its comparison afresh after a dropped stream.
+- `test_pending_frames.py` — `PendingFrames`, the per-camera hand-off to
+  `ai_engine`: newest frame wins, cameras served in turn, and nothing lost
+  or duplicated under concurrent offers.
+- `test_motion_detector.py` — `MotionDetector`: threshold, pixel delta and
+  lookback sensitivity, largest-patch (not total-area) counting, reset.
+- `test_motion_report.py` — the summary's per-camera MOTION block.
 - `test_process_frame.py` — the core detect→classify→label→alert path.
 - `test_classify_speciesnet.py` — SpeciesNet backend adaptation.
 - `test_logging_setup.py` — logging/log-reopen setup.
@@ -57,8 +61,9 @@ changes rather than starting a parallel one:
 **What to specifically probe**, given this project's actual failure
 history (cross-reference `RELEASES.md` and `AGENTS.md`):
 
-- Queue-full behavior: `put_nowait()` on a full `detection_queue` drops the
-  new frame — it must not evict or crash.
+- Hand-off behavior: a newer frame for a camera replaces its waiting one
+  (counted as "replaced"), and one busy camera must not starve the others —
+  check `PendingFrames` against both.
 - Per-frame error isolation: one bad frame in `_process_frame()` must log
   and continue, never take down `ai_engine`.
 - Config fail-fast messages: missing file, missing section/key, and a

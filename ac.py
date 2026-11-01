@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
+import collections
 import configparser
 import datetime
 import glob
 import logging
 import os
-import queue
 import signal
 import sys
 import threading
@@ -46,7 +46,6 @@ def load_config(path):
                 2: parser.getfloat('DETECTION', 'threshold_2'),
             },
             'cooldown': parser.getint('DETECTION', 'cooldown'),
-            'frame_interval': parser.getint('DETECTION', 'frame_interval'),
             'summary_interval': parser.getint('DETECTION', 'summary_interval'),
             'species_threshold': parser.getfloat('DETECTION',
                                                   'species_threshold'),
@@ -75,25 +74,33 @@ def load_config(path):
             # classifier's input crop.
             'crop_padding': parser.getfloat('DETECTION', 'crop_padding',
                                             fallback=0.15),
-            # Fraction of a downsampled, grayscale raw frame that must
-            # change (beyond sensor/compression noise) for camera_thread
-            # to treat it as motion and queue it immediately, in addition
-            # to (not instead of) the regular frame_interval cadence --
-            # see camera_thread. frame_interval alone can miss a fast
-            # animal's entire visible window between samples.
+            # Motion check tunings, the same for every camera -- see
+            # MotionDetector and README's Motion Detection section.
             'motion_threshold': parser.getfloat('DETECTION',
                                                 'motion_threshold',
-                                                fallback=0.02),
-            # How often (in raw frames) to actually run the motion check
-            # -- cheap per call, but on constrained hardware doing it on
-            # literally every raw frame, across every camera thread
-            # continuously, measurably competes with ai_engine for CPU
-            # time (observed: inference time rising, CPU idle dropping
-            # to 5-10%). Still far more frequent than frame_interval
-            # alone, just not maximal.
+                                                fallback=0.0012),
+            'motion_pixel_delta': parser.getint('DETECTION',
+                                                'motion_pixel_delta',
+                                                fallback=20),
             'motion_check_interval': parser.getint('DETECTION',
-                                                    'motion_check_interval',
-                                                    fallback=3),
+                                                   'motion_check_interval',
+                                                   fallback=5),
+            'motion_lookback': parser.getfloat('DETECTION', 'motion_lookback',
+                                               fallback=2.0),
+            # How long (seconds) a sighting still counts as "the previous
+            # frame" for the alert gate's two-frame latch. Frames used to
+            # arrive around the clock; now they only follow motion, so the
+            # previous look at a camera can be hours old and must not
+            # confirm a new sighting -- see _expire_stale_latch.
+            'confirm_window': parser.getfloat('DETECTION', 'confirm_window',
+                                              fallback=30.0),
+            # frame_interval used to be required: every Nth raw frame went
+            # to the AI whether or not anything moved. That sampling is
+            # gone (frames are analysed when motion is detected), but
+            # existing ac.cfg files still carry the key, so it is
+            # tolerated -- __main__ warns that it no longer does anything.
+            'frame_interval_set': parser.has_option('DETECTION',
+                                                    'frame_interval'),
             'max_age_days': parser.getint('CLEANUP', 'max_age_days'),
             'cleanup_interval': parser.getint('CLEANUP', 'cleanup_interval'),
         }
@@ -135,6 +142,20 @@ def load_config(path):
                              "configured")
         cfg['channels'] = channels
         cfg['rtsp_path'] = rtsp_path
+        # A value outside its range fails here rather than later inside a
+        # camera thread -- a motion_check_interval of 0, say, would be a
+        # ZeroDivisionError on every frame.
+        for key, in_range, wanted in (
+                ('motion_threshold', lambda v: 0 <= v < 1,
+                 "at least 0 and below 1 (a fraction of the frame)"),
+                ('motion_pixel_delta', lambda v: 1 <= v <= 254,
+                 "between 1 and 254"),
+                ('motion_check_interval', lambda v: v >= 1, "at least 1"),
+                ('motion_lookback', lambda v: 0 <= v <= 60,
+                 "between 0 and 60 seconds"),
+                ('confirm_window', lambda v: v > 0, "above 0 seconds")):
+            if not in_range(cfg[key]):
+                raise ValueError(f"{key} must be {wanted}, got {cfg[key]}")
         if cfg['classifier'] not in ('dfne', 'speciesnet'):
             raise ValueError(
                 f"classifier must be 'dfne' or 'speciesnet', "
@@ -170,7 +191,6 @@ TELEGRAM_API_BASE = "https://api.telegram.org"
 BASE_OUTPUT_FOLDER = _cfg['base_output_folder']
 THRESHOLDS = _cfg['thresholds']
 COOLDOWN = _cfg['cooldown']
-FRAME_INTERVAL = _cfg['frame_interval']
 SUMMARY_INTERVAL = _cfg['summary_interval']
 SPECIES_THRESHOLD = _cfg['species_threshold']
 # Tolerance for "Static" detection, as a fraction of frame width/height.
@@ -188,10 +208,20 @@ SPECIESNET_MODEL = _cfg['speciesnet_model']
 # Margin added around a detection box before cropping for species
 # classification, as a fraction of the box's own width/height.
 CROP_PADDING = _cfg['crop_padding']
-# Fraction of a downsampled frame that must change to count as motion.
+# Motion check tunings (see MotionDetector and camera_thread): how much of
+# the frame must change, how much a pixel must change, how often to check,
+# and how far back the reference frame is.
 MOTION_THRESHOLD = _cfg['motion_threshold']
-# How often (in raw frames) to actually run the motion check.
+MOTION_PIXEL_DELTA = _cfg['motion_pixel_delta']
 MOTION_CHECK_INTERVAL = _cfg['motion_check_interval']
+MOTION_LOOKBACK = _cfg['motion_lookback']
+# Side of the blur kernel applied to both frames before they are compared.
+# Not a setting: 5 beat 3 on every measure when the defaults were calibrated
+# (same alerts, a fraction of the dusk noise).
+MOTION_BLUR = 5
+# Seconds a sighting keeps counting as "the previous frame" for the alert
+# gate's two-frame latch -- see _expire_stale_latch.
+CONFIRM_WINDOW = _cfg['confirm_window']
 
 # Cleanup Settings
 MAX_AGE_DAYS = _cfg['max_age_days']
@@ -219,34 +249,66 @@ logger.addHandler(_log_handler)
 logger.propagate = False
 
 # --- 3. SHARED DATA & LOCKS ---
-# A PriorityQueue, not a plain Queue: ai_engine is a single thread
-# shared by every camera and can't keep up with the combined sampling
-# rate (frames get dropped when full -- see camera_thread), so once a
-# motion-triggered frame does get in, it should be drained before any
-# routine frame_interval-only one sitting alongside it, not just
-# whichever happened to queue first.
-detection_queue = queue.PriorityQueue(maxsize=15)
-# Items are (priority, seq, cam_id, frame) -- seq is a strictly
-# increasing tie-breaker so PriorityQueue's internal comparison never
-# needs to fall through to comparing frame (a numpy array), which
-# would raise. Shared across all camera threads, so it's incremented
-# under its own lock rather than relying on GIL happenstance.
-_queue_seq = 0
-_queue_seq_lock = threading.Lock()
+class PendingFrames:
+    """The hand-off from the camera threads to ai_engine: at most one
+    waiting frame per camera, the newest. ai_engine is a single thread
+    shared by every camera and can't keep up if several cameras show
+    motion at once, so what it must never do is work through a backlog of
+    stale frames or let one busy camera crowd out the others. A camera
+    that offers a new frame before ai_engine got to its previous one just
+    replaces it -- the newer frame is the better one to look at -- and
+    take() serves the cameras that have a frame waiting in turn."""
 
-def _next_queue_seq():
-    global _queue_seq
-    with _queue_seq_lock:
-        _queue_seq += 1
-        return _queue_seq
+    def __init__(self):
+        self._cond = threading.Condition()
+        self._waiting = {}          # cam_id -> (frame, time offered)
+        self._last_served = None
+
+    def offer(self, cam_id, frame):
+        """Leaves `frame` as cam_id's waiting frame. Returns True if that
+        replaced a frame nobody had picked up yet."""
+        with self._cond:
+            replaced = cam_id in self._waiting
+            self._waiting[cam_id] = (frame, time.time())
+            self._cond.notify()
+        return replaced
+
+    def take(self):
+        """Blocks until some camera has a frame waiting, then returns
+        (cam_id, frame, time it was offered) for the first such camera
+        after the one served last, wrapping around."""
+        with self._cond:
+            while not self._waiting:
+                self._cond.wait()
+            ids = sorted(self._waiting)
+            after = [c for c in ids
+                     if self._last_served is not None and c > self._last_served]
+            cam_id = (after or ids)[0]
+            self._last_served = cam_id
+            frame, offered_at = self._waiting.pop(cam_id)
+            return cam_id, frame, offered_at
+
+pending_frames = PendingFrames()
 
 stats_lock = threading.Lock()
 stats = {
     "Animal": 0, "Person": 0, "Vehicle": 0,
-    "frames_sampled": 0, "frames_dropped": 0, "frames_motion_triggered": 0,
+    # Per-camera counters behind the summary's MOTION block, by cam_id;
+    # see _motion_stats_for.
+    "motion": {},
     "start_time": datetime.datetime.now(),
     "streams": {}
 }
+
+def _new_motion_stats():
+    return {"checks": 0, "motion": 0, "analysed": 0, "replaced": 0,
+            "peak": 0.0, "wait_sum": 0.0, "wait_max": 0.0}
+
+def _motion_stats_for(cam_id):
+    """A camera's counters since the last summary. Call with stats_lock
+    held."""
+    return stats["motion"].setdefault(cam_id, _new_motion_stats())
+
 # Bounds concurrent Telegram photo uploads instead of spawning one thread
 # per detection.
 photo_executor = ThreadPoolExecutor(max_workers=4,
@@ -311,6 +373,28 @@ def cleanup_engine():
             logger.error(f"[SYSTEM] cleanup_engine iteration failed: {e}")
         time.sleep(CLEANUP_INTERVAL * 3600)
 
+def _motion_report(motion_stats):
+    """The summary's per-camera MOTION lines, from the counters in
+    `motion_stats` (a camera that counted nothing yet reads as zeros).
+    The strongest change is shown beside the threshold because that is
+    what tuning is about: a peak far below the threshold means the camera
+    is never triggering, a peak just above it that the threshold sits at
+    the noise."""
+    lines = []
+    for channel in CAMERA_CHANNELS:
+        cam_id = _cam_id(channel)
+        m = motion_stats.get(cam_id) or _new_motion_stats()
+        line = (f"- {cam_id}: {m['checks']} checks, {m['motion']} motion, "
+                f"{m['analysed']} analysed, {m['replaced']} replaced by a "
+                f"newer frame\n"
+                f"  strongest change {m['peak']:.3%} (threshold "
+                f"{MOTION_THRESHOLD:.3%})")
+        if m['analysed']:
+            line += (f"; AI wait avg {m['wait_sum'] / m['analysed']:.1f}s, "
+                     f"max {m['wait_max']:.1f}s")
+        lines.append(line)
+    return "\n".join(lines)
+
 def summary_engine():
     """Periodically sends a summary of detections and stream stats."""
     while True:
@@ -321,10 +405,6 @@ def summary_engine():
                 s_list = [f"- {k}: {v['status']} ({v['res']})"
                           for k, v in stats["streams"].items()]
                 s_info = "\n".join(s_list)
-                sampled = stats["frames_sampled"]
-                dropped = stats["frames_dropped"]
-                motion = stats["frames_motion_triggered"]
-                drop_pct = (dropped / sampled * 100) if sampled else 0.0
                 report = (f"--- Animals Catcher Summary ---\n"
                           f"Version: {VERSION}\n"
                           f"Range: {stats['start_time'].strftime('%d/%m/%Y %H:%M')} - "
@@ -333,35 +413,84 @@ def summary_engine():
                           f"DETECTIONS:\n- Animals: {stats['Animal']}\n"
                           f"- People: {stats['Person']}\n"
                           f"- Vehicles: {stats['Vehicle']}\n\n"
-                          f"AI QUEUE:\n- Sampled: {sampled} "
-                          f"(motion-triggered: {motion})\n"
-                          f"- Dropped (queue full): {dropped} "
-                          f"({drop_pct:.0f}%)")
+                          f"MOTION:\n{_motion_report(stats['motion'])}")
                 stats.update({"Animal": 0, "Person": 0, "Vehicle": 0,
-                              "frames_sampled": 0, "frames_dropped": 0,
-                              "frames_motion_triggered": 0,
-                              "start_time": now})
+                              "motion": {}, "start_time": now})
             send_telegram_message(report)
         except Exception as e:
             logger.error(f"[SYSTEM] summary_engine iteration failed: {e}")
 
-def _frame_changed(prev_gray, frame, threshold):
-    """Cheap per-raw-frame motion check, far cheaper than a MegaDetector
-    pass: downsamples and blurs (both for speed and to suppress sensor/
-    compression noise that would otherwise register as motion on nearly
-    every frame), then compares against the last-checked frame. Returns
-    (changed, new_gray) -- new_gray becomes the next call's prev_gray.
-    The very first call (prev_gray is None) always reports changed, so
-    the first frame from a stream still gets queued."""
-    small = cv2.resize(frame, (160, 120))
-    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    if prev_gray is None:
-        return True, gray
-    diff = cv2.absdiff(gray, prev_gray)
-    _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
-    changed_fraction = cv2.countNonZero(thresh) / thresh.size
-    return changed_fraction > threshold, gray
+# The size every frame is shrunk to before two frames are compared, as
+# (width, height). Small enough that a check costs a millisecond or two on a
+# 720p frame; a small or distant animal is only a few pixels of it, which is
+# why the thresholds that detect one are fractions of a percent.
+MOTION_SIZE = (160, 120)
+
+class MotionDetector:
+    """Frame-differencing motion check for ONE camera -- far cheaper than
+    a MegaDetector pass, which is why it decides what gets one. Each
+    frame is shrunk, turned gray and blurred (to suppress sensor and
+    compression noise), then compared with a reference frame from
+    `lookback` seconds earlier (0 = the previous check). A pixel counts as
+    changed when it differs by more than `pixel_delta` levels, and the
+    frame counts as showing motion when the largest connected patch of
+    changed pixels covers more than `threshold` of it. Taking the largest
+    patch rather than the total changed area is what keeps scattered
+    noise from adding up to motion, so a small threshold stays usable.
+
+    A longer lookback makes slow movers visible: a deer that shifts a
+    pixel between two frames a quarter second apart has moved several by
+    the time of a frame two seconds older. The price is that a mover
+    keeps registering for about `lookback` seconds after it stops, or
+    after it has left.
+    """
+
+    def __init__(self, threshold, pixel_delta, lookback, blur=MOTION_BLUR):
+        self.threshold = threshold
+        self.pixel_delta = pixel_delta
+        self.lookback = lookback
+        self.blur = blur
+        self._history = collections.deque()   # (time, gray), oldest first
+
+    def reset(self):
+        """Forget every earlier frame -- after a reconnect, so the first
+        frame back isn't compared with one from before the outage."""
+        self._history.clear()
+
+    def check(self, frame, now=None):
+        """Compares `frame` (a BGR array, the newer of the two frames
+        compared) with the reference and returns (moved, size): whether it
+        shows motion, and the largest changed patch as a fraction of the
+        frame. The first frame after construction or reset has nothing to
+        be compared with and never counts as motion."""
+        if now is None:
+            now = time.time()
+        # Plain bilinear shrinking. INTER_AREA averages more pixels per
+        # output pixel, but costs about eight times as much on a 720p
+        # frame (measured: 9.8 ms against 1.2), which matters on the
+        # hardware this runs on, and its noise floor on a quiet night
+        # scene was no lower.
+        small = cv2.resize(frame, MOTION_SIZE)
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        if self.blur > 1:
+            gray = cv2.GaussianBlur(gray, (self.blur, self.blur), 0)
+        history = self._history
+        # The reference is the newest frame at least `lookback` old, or,
+        # until the history is that long, the oldest there is.
+        while len(history) > 1 and now - history[1][0] >= self.lookback:
+            history.popleft()
+        reference = history[0][1] if history else None
+        history.append((now, gray))
+        if reference is None:
+            return False, 0.0
+        diff = cv2.absdiff(gray, reference)
+        _, mask = cv2.threshold(diff, self.pixel_delta, 255,
+                                cv2.THRESH_BINARY)
+        count, _, areas, _ = cv2.connectedComponentsWithStats(
+            mask, connectivity=8)
+        size = (areas[1:, cv2.CC_STAT_AREA].max() / mask.size
+                if count > 1 else 0.0)
+        return bool(size > self.threshold), float(size)
 
 def _cam_id(channel):
     """Zero-padded so the default channels (4, 5, 6) keep their original
@@ -379,64 +508,70 @@ def _rtsp_url(channel):
     return (f"rtsp://{user}:{password}@{IP}:{PORT}"
             f"{RTSP_PATH.format(channel=channel)}")
 
+# After this many seconds without motion on a camera, its next motion is
+# logged as a new event; within a burst only the first trigger is logged.
+MOTION_LOG_GAP = 10
+
 def camera_thread(cam_num):
-    """Maintains RTSP connection and samples frames for the AI."""
+    """Reads one camera's RTSP stream and watches it for motion. Nothing
+    here depends on any other camera: it has its own detector and its own
+    slot in pending_frames. When a
+    check finds motion, the frame it just looked at -- the later of the
+    two it compared -- is what ai_engine gets to analyse; a frame that
+    shows no motion never reaches the AI."""
     cam_id = _cam_id(cam_num)
     url = _rtsp_url(cam_num)
+    detector = MotionDetector(MOTION_THRESHOLD, MOTION_PIXEL_DELTA,
+                              MOTION_LOOKBACK, MOTION_BLUR)
     os.makedirs(os.path.join(BASE_OUTPUT_FOLDER, cam_id), exist_ok=True)
     cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
     f_idx = 0
-    prev_gray = None
+    last_motion = 0.0
     while True:
         try:
-            success, frame = cap.read()
-            if not success or frame is None:
+            f_idx += 1
+            check = f_idx % MOTION_CHECK_INTERVAL == 0
+            # Only every motion_check_interval-th raw frame is checked --
+            # cheap per call, but continuously across every camera thread
+            # it measurably competes with ai_engine for CPU on constrained
+            # hardware. grab() decodes a frame without converting it to a
+            # numpy array, so the frames that aren't checked skip that
+            # conversion too.
+            ok = cap.grab()
+            frame = None
+            if ok and check:
+                ok, frame = cap.retrieve()
+                ok = ok and frame is not None
+            if not ok:
                 with stats_lock:
                     stats["streams"][cam_id] = {"status": "OFFLINE",
                                                 "res": "N/A"}
                 cap.release()
+                detector.reset()
                 time.sleep(5)
                 cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
                 continue
-            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            if not check:
+                continue
+            h, w = frame.shape[:2]
+            now = time.time()
+            moved, size = detector.check(frame, now)
             with stats_lock:
                 stats["streams"][cam_id] = {"status": "ONLINE",
                                             "res": f"{w}x{h}"}
-            # Checked every motion_check_interval-th raw frame (not
-            # every one -- cheap per call, but continuously across every
-            # camera thread it measurably competes with ai_engine for
-            # CPU on constrained hardware), independent of
-            # frame_interval. On a skipped iteration prev_gray just
-            # stays as of the last *checked* frame, which is the
-            # correct comparison baseline for next time.
-            if f_idx % MOTION_CHECK_INTERVAL == 0:
-                motion, prev_gray = _frame_changed(prev_gray, frame,
-                                                   MOTION_THRESHOLD)
-            else:
-                motion = False
-            if motion or f_idx % FRAME_INTERVAL == 0:
-                with stats_lock:
-                    stats["frames_sampled"] += 1
-                    if motion:
-                        stats["frames_motion_triggered"] += 1
-                try:
-                    # priority 0 (motion) is drained before 1
-                    # (frame_interval-only) -- see detection_queue above.
-                    priority = 0 if motion else 1
-                    detection_queue.put_nowait(
-                        (priority, _next_queue_seq(), cam_id, frame))
-                except queue.Full:
-                    # ai_engine is a single thread shared by every camera,
-                    # and MegaDetector takes several seconds per frame on
-                    # CPU -- if sampling outpaces that, frames are dropped
-                    # here silently. Counted (not logged per-drop, which
-                    # would just flood the log at the same rate) so
-                    # summary_engine's periodic report can show whether
-                    # this is actually happening.
+                counts = _motion_stats_for(cam_id)
+                counts["checks"] += 1
+                counts["peak"] = max(counts["peak"], size)
+                if moved:
+                    counts["motion"] += 1
+            if moved:
+                if now - last_motion > MOTION_LOG_GAP:
+                    logger.info(f"[MOTION] {cam_id}: {size:.3%} of the frame "
+                                f"changed (threshold {MOTION_THRESHOLD:.3%})")
+                last_motion = now
+                if pending_frames.offer(cam_id, frame):
                     with stats_lock:
-                        stats["frames_dropped"] += 1
-            f_idx += 1
+                        _motion_stats_for(cam_id)["replaced"] += 1
         except Exception as e:
             logger.error(f"[SYSTEM] camera_thread({cam_id}) iteration "
                         f"failed: {e}")
@@ -499,8 +634,9 @@ def _load_speciesnet_classifier():
 
 def _process_frame(cam_id, frame, detector, classifier, names, colors,
                    last_det, motion_val, last_box, classify_fn=_classify_dfne):
-    """Runs detection (and species classification) on one sampled frame,
-    annotates it, and fires an alert for any new, non-static detection."""
+    """Runs detection (and species classification) on one frame that showed
+    motion, annotates it, and fires an alert for any new, non-static
+    detection."""
     results = detector.single_image_detection(frame)
     det = results.get("detections")
     seen = {0: False, 1: False, 2: False}
@@ -579,6 +715,19 @@ def _clean_stale_model_downloads():
             logger.warning(f"[SYSTEM] Could not remove stale partial "
                            f"download {path}: {e}")
 
+def _expire_stale_latch(motion_val, last_look, cam_id, seen_at):
+    """Forgets a camera's two-frame latch when its previous look is more
+    than CONFIRM_WINDOW seconds older than the one at `seen_at`, then
+    records `seen_at` as its latest. The latch means "also seen on the
+    previous processed frame"; frames used to arrive around the clock, but
+    they now only follow motion, so the previous frame can be hours old --
+    and a sighting then must not count as already confirmed by one from
+    the last time something walked past."""
+    if seen_at - last_look.get(cam_id, seen_at) > CONFIRM_WINDOW:
+        for cls in (0, 1, 2):
+            motion_val[(cam_id, cls)] = False
+    last_look[cam_id] = seen_at
+
 def ai_engine():
     """Processes frames: Detects objects and filters static false positives."""
     _clean_stale_model_downloads()
@@ -606,6 +755,7 @@ def ai_engine():
     last_det = {}
     motion_val = {}
     last_box = {}
+    last_look = {}
     names = {0: "Animal", 1: "Person", 2: "Vehicle"}
     colors = {0: (0, 255, 0), 1: (255, 0, 0), 2: (0, 0, 255)}
     send_telegram_message(
@@ -613,8 +763,15 @@ def ai_engine():
         f"Started: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
         f"Streams: {len(CAMERA_CHANNELS)}")
     while True:
-        _priority, _seq, cam_id, frame = detection_queue.get()
+        cam_id, frame, offered_at = pending_frames.take()
+        waited = time.time() - offered_at
+        with stats_lock:
+            counts = _motion_stats_for(cam_id)
+            counts["analysed"] += 1
+            counts["wait_sum"] += waited
+            counts["wait_max"] = max(counts["wait_max"], waited)
         try:
+            _expire_stale_latch(motion_val, last_look, cam_id, offered_at)
             _process_frame(cam_id, frame, detector, classifier, names,
                            colors, last_det, motion_val, last_box,
                            classify_fn)
@@ -622,8 +779,6 @@ def ai_engine():
             logger.error(f"[SYSTEM] ai_engine failed processing frame "
                         f"from {cam_id}: {e}")
             time.sleep(1)
-        finally:
-            detection_queue.task_done()
 
 # --- 5. STARTUP ---
 def _handle_shutdown(signum, frame):
@@ -678,6 +833,14 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGUSR1, _handle_log_reopen)
     _write_pid_file()
+    if _cfg['frame_interval_set']:
+        logger.warning("[SYSTEM] frame_interval in ac.cfg no longer does "
+                       "anything: frames reach the AI only when motion is "
+                       "detected (see README, Motion Detection). Remove it.")
+    logger.info(f"[SYSTEM] Motion check: threshold {MOTION_THRESHOLD:.3%}, "
+                f"pixel delta {MOTION_PIXEL_DELTA}, every "
+                f"{MOTION_CHECK_INTERVAL} frames, lookback "
+                f"{MOTION_LOOKBACK:g}s")
     for t in [ai_engine, summary_engine, cleanup_engine]:
         threading.Thread(target=t, name=t.__name__, daemon=True).start()
     for n in CAMERA_CHANNELS:

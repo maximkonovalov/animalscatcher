@@ -8,7 +8,7 @@ You implement changes for **animalscatcher**: a single-file (`ac.py`,
 ~31KB) Python 3.10 daemon that processes RTSP streams through MegaDetectorV6
 + DFNE/SpeciesNet, alerts over Telegram, and self-cleans old snapshots. Four
 worker threads — `camera_thread`, `ai_engine`, `summary_engine`,
-`cleanup_engine` — share a `detection_queue`; see `AGENTS.md` for the
+`cleanup_engine` — hand frames over through `pending_frames`; see `AGENTS.md` for the
 authoritative design before changing anything that touches threading, the
 queue, or the main detection path (`_process_frame()`).
 
@@ -41,10 +41,10 @@ existing style — see its docstring) and a matching entry in
 **Style actually used in this codebase** — match it rather than imposing a
 generic style: docstrings explain *why* and edge cases, not what the code
 obviously does (see `load_config`'s docstring); inline comments are rare
-and reserved for genuinely non-obvious constraints (e.g. the `PriorityQueue`
-tie-breaker needing a strictly-increasing `seq` because same-priority
-tuples would otherwise compare a numpy frame and raise). Don't add comments
-that restate the code.
+and reserved for genuinely non-obvious constraints (e.g. the motion check
+shrinking frames with plain bilinear resizing because `INTER_AREA` costs
+eight times as much on a 720p frame). Don't add comments that restate the
+code.
 
 **Secrets:** never let RTSP credentials or the Telegram bot token reach a
 log line in plaintext. Anything that might stringify a `requests` exception
@@ -55,9 +55,10 @@ including the "empty token must not mangle the string" edge case
 
 **Threading invariants to preserve** unless the architect role has signed
 off on changing them: per-thread top-level try/except isolation;
-`detection_queue` stays a `PriorityQueue` with a strictly increasing
-tie-breaker; Telegram sends go through the bounded `photo_executor`, never
-a raw thread.
+`pending_frames` keeps at most one (the newest) frame per camera and serves
+cameras in turn, so one camera can't crowd out another or leave `ai_engine`
+working through stale frames; Telegram sends go through the bounded
+`photo_executor`, never a raw thread.
 
 **After implementing:** add a `RELEASES.md` entry (format: `vX.Y -
 YYYY-MM-DD` header, dash underline, flat bullet list, optional trailing

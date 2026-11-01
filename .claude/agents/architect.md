@@ -12,8 +12,9 @@ pipeline, and alerts over Telegram. It runs on a Mac Mini 2018 via launchd.
 Read `AGENTS.md` first for any question touching threads or data flow — it
 is the authoritative architecture doc for this project's four internal
 worker threads (`camera_thread`, `ai_engine`, `summary_engine`,
-`cleanup_engine`), communicating through a shared `detection_queue`
-(`PriorityQueue`, motion-triggered frames at priority 0). Don't re-derive
+`cleanup_engine`), where each camera runs its own motion check and hands
+frames that show motion to `ai_engine` through `pending_frames` (one
+waiting frame per camera, newest wins, cameras served in turn). Don't re-derive
 this from `ac.py` alone; keep whatever you design consistent with it, and
 flag it for the technical-writer role to update if your design changes it.
 
@@ -30,9 +31,9 @@ these unless you have a specific, documented reason to break one:
   rather than killing that thread (and the rest of the daemon keeps running).
 - Telegram sends are asynchronous via a *bounded* `ThreadPoolExecutor` (4
   workers) — not an unbounded thread per detection.
-- `detection_queue` priority ordering only affects drain order for frames
-  already queued; `put_nowait()` on a full queue drops the new frame rather
-  than evicting a lower-priority one.
+- `pending_frames` holds at most one frame per camera and serves cameras in
+  turn: a camera with constant motion must not crowd out the others, and
+  `ai_engine` must never work through a backlog of stale frames.
 - SIGTERM/SIGINT drain `photo_executor` before exit; SIGUSR1 reopens log
   file descriptors in place (for external log rotation) rather than
   restarting the process.
@@ -40,9 +41,10 @@ these unless you have a specific, documented reason to break one:
 Before proposing a design, check `RELEASES.md`'s history — several past
 ideas were already tried, found wanting, and revised (e.g. v0.4's
 defensive classifier-output key lookups were superseded by a more correct
-fix in v0.5; motion detection was added *additively* on top of
-`frame_interval` sampling rather than replacing it, after replacing it was
-found to miss fast-moving animals). Don't re-propose something RELEASES.md
+fix in v0.5; motion detection first ran *additively* on top of
+`frame_interval` sampling, where it only reprioritised frames that were
+sampled anyway while the AI dropped ~98% of what it was offered -- frames
+now reach the AI only when a camera's own motion check fires). Don't re-propose something RELEASES.md
 shows was already tried and rejected, and say so explicitly if you're aware
 of prior art.
 

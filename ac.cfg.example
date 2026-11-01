@@ -23,7 +23,6 @@ threshold_0 = 0.45
 threshold_1 = 0.75
 threshold_2 = 0.95
 cooldown = 20
-frame_interval = 10
 # Summary interval in hours (e.g., 6)
 summary_interval = 6
 # Minimum confidence to accept a species classification (Stage 2)
@@ -48,20 +47,37 @@ static_tolerance = 0.03
 # 0.15 = 15% larger on each side). A tight box can clip a tail, ear, or
 # antler the classifier needs.
 # crop_padding = 0.15
-# Fraction of a downsampled frame that must change (beyond sensor/
-# compression noise) for camera_thread to treat it as motion and queue
-# the frame immediately, in addition to the regular frame_interval
-# cadence. Catches fast-moving animals frame_interval alone can miss
-# entirely. Lower = more sensitive (more frames queued).
-# motion_threshold = 0.02
-# How often (in raw frames) to actually run the motion check above --
-# cheap per call, but doing it on literally every raw frame across
-# every camera thread continuously can measurably compete with the AI
-# pipeline for CPU on constrained hardware. Raise this (check less
-# often) if you see inference time increasing / CPU idle time dropping
-# after enabling motion detection; still far more frequent than
-# frame_interval alone at the default.
-# motion_check_interval = 3
+#
+# --- Motion detection -------------------------------------------------------
+# Each camera is watched on its own: every motion_check_interval-th frame is
+# compared with an earlier frame of the same camera, and only a frame that
+# shows motion is analysed by the AI. Nothing is sampled on a timer (the old
+# frame_interval key is gone; a config that still has it works, with a
+# warning at startup). The tunings are the same for every camera. README's
+# Motion Detection section explains how to tune them from the summary's
+# MOTION lines.
+#
+# How often, in raw frames, a camera's frame is checked for motion (on a
+# 20 fps stream, 5 = every quarter second). Raising it costs less CPU, which
+# is scarce on small machines.
+# motion_check_interval = 5
+# The smallest patch of changed pixels that counts as motion, as a fraction
+# of the frame (0.001 = 0.1%). Lower = more sensitive. Small or distant
+# animals change only a few tenths of a percent of the frame while they move.
+# motion_threshold = 0.0012
+# How much a pixel's brightness (0-255) must differ between the two frames
+# to count as changed. Lower = more sensitive, and noisier at dusk and dawn.
+# motion_pixel_delta = 20
+# Compare with the frame from this many seconds earlier instead of the
+# previous check (0 = the previous check). A longer lookback makes slow
+# movers visible, at the price of motion registering for about that long
+# after something stops or leaves.
+# motion_lookback = 2
+# Seconds within which a second sighting of the same kind of object on the
+# same camera confirms the first one (an alert needs two). Keep it longer
+# than the AI takes to come round to a camera again: roughly 4 seconds per
+# camera that has motion waiting.
+# confirm_window = 30
 
 [PATHS]
 base_output_folder = /home/ac/snaps
