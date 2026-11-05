@@ -74,7 +74,7 @@ numpy==1.26.4
 #     speciesnet_model at a file of unknown origin.
 torch==2.2.2
 torchvision==0.17.2
-torchaudio==2.2.2
+torchaudio==2.11.1
 
 # setuptools==59.5.0: yolov5 (a transitive dependency via PytorchWildlife)
 # imports pkg_resources at module level. Modern setuptools (~80+) removes
