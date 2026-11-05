@@ -26,7 +26,7 @@ PytorchWildlife==1.3.0
 # only verified/targeted interpreter (see README System Requirements).
 requests==2.34.2
 
-# numpy<2: torch==2.2.2 (pinned below) is compiled
+# numpy<2: torch==2.15.0 (pinned below) is compiled
 # against the numpy 1.x ABI. A newer opencv-python/opencv-python-headless
 # (>=5, pulled in transitively) requires numpy>=2, which silently breaks
 # torch.from_numpy() at runtime (RuntimeError: Numpy is not available)
@@ -72,7 +72,7 @@ numpy==1.26.4
 #     source or a broken TLS connection to one. A bump isn't available as a
 #     mitigation (above), so the weights are what to protect: don't point
 #     speciesnet_model at a file of unknown origin.
-torch==2.2.2
+torch==2.15.0
 torchvision==0.17.2
 torchaudio==2.2.2
 
