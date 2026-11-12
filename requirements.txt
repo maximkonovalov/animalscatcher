@@ -15,6 +15,18 @@ opencv-python-headless==4.10.0.84
 # releases (the version string MegaDetectorV6 accepts, and whether
 # DFNE/DeepfauneClassifier even exist) -- see ac.py's MegaDetectorV6 and
 # DFNE calls, which are written against this exact version.
+#
+# 1.3.1 (2026-11-04) is the final release -- upstream no longer maintains
+# PytorchWildlife -- and is deliberately not adopted. It changes nothing on
+# the code paths ac.py uses (an import-time FutureWarning, a new image-folder
+# class for batch classification, new default MegaDetectorV6 version names
+# where ac.py passes its own, two stray top-level packages dropped from the
+# wheel), but its metadata adds gradio<5,>=4.44.1 (1.3.0 leaves gradio
+# unpinned). Nothing here imports gradio, yet in an existing install pip
+# would have to pull gradio, gradio-client, markupsafe, pillow (<11) and
+# tomlkit down to the versions gradio 4.44 accepts. The successor upstream
+# names, sparrow-engine, needs Python>=3.11 and ships no macOS x86_64 wheel
+# (as of 0.1.32), so it isn't an option for the Intel Mac mini either.
 PytorchWildlife==1.3.0
 
 # >=2.33 (not just >=2.32.3): older requests' check_compatibility() only
@@ -47,7 +59,7 @@ numpy==1.26.4
 # what this project is actually developed and deployed against;
 # torchvision 0.17.2 and torchaudio 2.2.2 are its matching releases.
 #
-# Dependabot flags torch 2.2.2 (nine advisories, one Critical) and, each time
+# Dependabot flags torch 2.2.2 (ten advisories, one Critical) and, each time
 # one of them gains a fix, opens a security-update PR that bumps torch alone
 # (2.13.0 on 2026-10-31: CI failed, the auto-close workflow closed it). That
 # can't be merged, and no bump fixes it for this deployment: the newest
@@ -72,6 +84,16 @@ numpy==1.26.4
 #     source or a broken TLS connection to one. A bump isn't available as a
 #     mitigation (above), so the weights are what to protect: don't point
 #     speciesnet_model at a file of unknown origin.
+#   - CVE-2026-24747 (High, fixed in torch 2.10.0; flagged only since
+#     2026-11-04, when GitHub corrected the advisory's package name from
+#     "pytorch" to "torch"): the weights_only=True unpickler again, memory
+#     corruption from a crafted checkpoint. Nothing here loads that way:
+#     SpeciesNet's, PytorchWildlife's and ultralytics' loads pass
+#     weights_only=False or leave the default (False on this torch), timm is
+#     only used with pretrained=False, and ultralytics' opt-in
+#     ULTRALYTICS_SAFE_LOAD is off. Loaded the way they do, a malicious
+#     checkpoint already runs code on any torch version, so a bump wouldn't
+#     change the exposure: same as CVE-2025-32434, same mitigation.
 torch==2.2.2
 torchvision==0.17.2
 torchaudio==2.2.2
