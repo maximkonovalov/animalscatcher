@@ -58,6 +58,12 @@ changes rather than starting a parallel one:
   lookback sensitivity, largest-patch (not total-area) counting, reset.
 - `test_motion_report.py` — the summary's per-camera MOTION block, its AI
   QUEUE block (frames offered and dropped) and the summary carrying both.
+- `test_storage_report.py` — which files count as snapshots
+  (`_snapshot_files`: only the files directly inside a camera folder), the
+  summary's STORAGE block (file count, total size in powers of 1024, a file
+  that vanishes mid-walk skipped, a failed walk reported rather than raised
+  so the summary still goes out) and `cleanup_engine`, which deletes from
+  the same set.
 - `test_process_frame.py` — the core detect→classify→label→alert path,
   and the per-camera count of frames with an animal.
 - `test_classify_speciesnet.py` — SpeciesNet backend adaptation.

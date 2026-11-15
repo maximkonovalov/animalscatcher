@@ -73,7 +73,7 @@ following sections are defined:
 | TELEGRAM  | token, chat_id | Bot API token and target chat ID for alerts. |
 | PATHS     | base_output_folder | Storage location for snapshots. |
 | DETECTION | threshold_0-2, cooldown, confirm_window, motion_check_interval, motion_threshold, motion_pixel_delta, motion_lookback, summary_interval, species_threshold, static_tolerance, classifier, speciesnet_model, crop_padding | Confidence thresholds, alert frequency, motion detection (see Motion Detection below), and species classifier choice. |
-| CLEANUP | max_age_days, cleanup_interval | Retention policy for snapshots. |
+| CLEANUP | max_age_days, cleanup_interval | Retention policy for snapshots. The summary's STORAGE block says how many are kept and how much space they take. |
 
 `ac.cfg` holds RTSP and Telegram credentials in plaintext and must never be
 committed (it's covered by `.gitignore`). Since the daemon runs via launchd
@@ -365,8 +365,9 @@ camera_thread: Manages one RTSP stream per channel in `[CAMERA] channels`
 (see Camera Setup above) and checks it for motion on its own (see Motion
 Detection above); only a frame that shows motion is passed on.
 
-summary_engine: Sends periodic health reports, detection stats, each
-camera's motion stats and how many frames the AI queue dropped to Telegram.
+summary_engine: Sends periodic health reports to Telegram: detection stats,
+each camera's motion stats, how many frames the AI queue dropped, and how
+many snapshots the storage holds and the space they take.
 
 cleanup_engine: Keeps the system lean by purging old data.
 
@@ -401,8 +402,9 @@ flowchart TD
     C -.-> Stats
     AI -.-> Stats
 
-    Sum["summary_engine<br/>(every summary_interval hours)"] -->|health + detection report| TG2(["Telegram report"])
+    Sum["summary_engine<br/>(every summary_interval hours)"] -->|health, detection and storage report| TG2(["Telegram report"])
     Stats -.->|read, then reset| Sum
+    Out -.->|count and size of snapshots| Sum
 
     Clean["cleanup_engine<br/>(every cleanup_interval hours)"] -->|delete files older than max_age_days| Out
 ```

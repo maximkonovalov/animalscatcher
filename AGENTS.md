@@ -111,9 +111,24 @@ could take, not how many events it missed. All cameras share one
 and the data for tuning the motion settings (see README's Motion Detection
 section).
 
+A STORAGE block closes the report: how many snapshots `base_output_folder`
+holds and the space they take, the sum of their file sizes in powers of 1024
+as `du -h` shows them. Unlike the counters above it is not since the last
+summary: the files are counted afresh each time, by a plain directory walk
+done before `stats_lock` is taken so it never holds up the threads that
+update the counters. The walk is over `_snapshot_files()`, the same set
+`cleanup_engine` deletes from, so the report and the retention can't
+disagree about what the storage holds. A file removed mid-walk is not
+counted; if the walk fails the block says "unavailable" and the rest of the
+report still goes out, since the summary is also the heartbeat.
+
 ### Cleanup Agent (`cleanup_engine`)
 A maintenance worker that keeps the host system stable.
-* **Storage:** Deletes snapshots older than `max_age_days`.
+* **Storage:** Deletes snapshots older than `max_age_days`: the files
+  directly inside each camera folder under `base_output_folder`
+  (`_snapshot_files()`, which the summary's STORAGE block counts too).
+  Anything loose in `base_output_folder`, or in a folder inside a camera
+  folder, is neither deleted nor counted.
 * **Logs:** Not its concern — the daemon logs to stdout/stderr rather
   than a file it owns, so it has nothing to rotate itself. Rotation of
   those files is handled externally (macOS newsyslog, via
