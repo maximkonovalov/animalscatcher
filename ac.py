@@ -347,6 +347,20 @@ def send_telegram_photo(photo_path, caption):
 
 # --- 4. ENGINE THREADS ---
 
+def _snapshot_files():
+    """Yields the path of every snapshot in the storage: the files directly
+    inside each camera folder under base_output_folder. cleanup_engine
+    deletes from this set and the summary counts it, so the two can't
+    disagree about what the storage holds."""
+    if os.path.exists(BASE_OUTPUT_FOLDER):
+        for cam_dir in os.listdir(BASE_OUTPUT_FOLDER):
+            path = os.path.join(BASE_OUTPUT_FOLDER, cam_dir)
+            if os.path.isdir(path):
+                for f in os.listdir(path):
+                    f_path = os.path.join(path, f)
+                    if os.path.isfile(f_path):
+                        yield f_path
+
 def cleanup_engine():
     """Removes snapshots older than max_age_days: once at startup, then
     every cleanup_interval hours."""
@@ -355,20 +369,14 @@ def cleanup_engine():
             now = time.time()
             cutoff = now - (MAX_AGE_DAYS * 86400)
             deleted_count = 0
-            if os.path.exists(BASE_OUTPUT_FOLDER):
-                for cam_dir in os.listdir(BASE_OUTPUT_FOLDER):
-                    path = os.path.join(BASE_OUTPUT_FOLDER, cam_dir)
-                    if os.path.isdir(path):
-                        for f in os.listdir(path):
-                            f_path = os.path.join(path, f)
-                            if (os.path.isfile(f_path) and
-                                os.path.getmtime(f_path) < cutoff):
-                                try:
-                                    os.remove(f_path)
-                                    deleted_count += 1
-                                except OSError as e:
-                                    logger.warning(f"[SYSTEM] Failed to "
-                                                   f"remove {f_path}: {e}")
+            for f_path in _snapshot_files():
+                if os.path.getmtime(f_path) < cutoff:
+                    try:
+                        os.remove(f_path)
+                        deleted_count += 1
+                    except OSError as e:
+                        logger.warning(f"[SYSTEM] Failed to "
+                                       f"remove {f_path}: {e}")
             logger.info(f"[SYSTEM] Cleanup: Removed {deleted_count} old "
                        f"snapshots.")
         except Exception as e:
@@ -410,11 +418,49 @@ def _queue_report(motion_stats):
     return (f"- Offered: {offered} (frames that showed motion)\n"
             f"- Dropped (queue full): {dropped} ({share:.1f}%)")
 
+def _human_size(n):
+    """A byte count as B, KB, MB, GB or TB, whichever keeps the number
+    under 1024: powers of 1024, the way `du -h` shows them."""
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB"):
+        # Rounded first, so 1023.97 KB reads as 1.0 MB, not 1024.0 KB.
+        if round(size, 1) < 1024:
+            break
+        size /= 1024
+    else:
+        unit = "TB"
+    return f"{size:.0f} B" if unit == "B" else f"{size:.1f} {unit}"
+
+def _storage_report():
+    """The summary's STORAGE lines: how many snapshots the storage holds and
+    the space they take (the sum of the file sizes). Unlike the counters
+    beside it this is not since the last summary: the files are counted
+    afresh each time. One that is gone by the time it is measured, removed
+    by cleanup_engine, no longer counts. A walk that fails altogether is
+    reported as such rather than raised, since the summary is also the
+    heartbeat and must still go out."""
+    files = size = 0
+    try:
+        for f_path in _snapshot_files():
+            try:
+                size += os.path.getsize(f_path)
+            except OSError:
+                continue
+            files += 1
+    except OSError as e:
+        logger.warning(f"[SYSTEM] Storage statistics unavailable: {e}")
+        return "- unavailable (see the log)"
+    return f"- Files: {files}\n- Size: {_human_size(size)}"
+
 def summary_engine():
-    """Periodically sends a summary of detections and stream stats."""
+    """Periodically sends a summary of detections, stream stats and the
+    storage."""
     while True:
         time.sleep(SUMMARY_INTERVAL * 3600)
         try:
+            # Counted before stats_lock is taken: walking the storage must
+            # not hold up the threads that update the counters.
+            storage = _storage_report()
             with stats_lock:
                 now = datetime.datetime.now()
                 s_list = [f"- {k}: {v['status']} ({v['res']})"
@@ -430,7 +476,8 @@ def summary_engine():
                           f"- Vehicles: {stats['Vehicle']}\n\n"
                           f"MOTION:\n{_motion_report(stats['motion'])}\n\n"
                           f"AI QUEUE (room for {AI_QUEUE_SIZE} frames, all "
-                          f"cameras):\n{_queue_report(stats['motion'])}")
+                          f"cameras):\n{_queue_report(stats['motion'])}\n\n"
+                          f"STORAGE:\n{storage}")
                 stats.update({"Animal": 0, "Person": 0, "Vehicle": 0,
                               "motion": {}, "start_time": now})
             send_telegram_message(report)
