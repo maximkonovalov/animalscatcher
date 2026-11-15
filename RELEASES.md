@@ -1,6 +1,57 @@
 Release History
 ===============
 
+v0.20 - 2026-11-15
+------------------
+
+The Telegram summary now ends with a STORAGE block: how many snapshots the
+storage holds and the space they take. An existing ac.cfg works unchanged.
+
+Added:
+  - A STORAGE block under AI QUEUE in the summary: "Files" is how many
+    snapshots the storage holds and "Size" the space they take, the sum of
+    the file sizes in powers of 1024 (B, KB, MB, GB or TB, as du -h shows
+    them). Unlike the counters above it, it is not since the last summary:
+    the files are counted again each time, before the stats lock is taken
+    so the walk can't hold up the other threads. A file removed during the
+    walk is not counted, and if the walk fails the block reads
+    "unavailable (see the log)" and the rest of the summary still goes
+    out. On the production machine, which keeps seven days, that is 999
+    files and 566.1 MB today, and the walk takes about 10 ms.
+  - Tests: test_storage_report.py covers which files count, the sizes, an
+    empty or missing storage, a file that vanishes mid-walk, a walk that
+    fails, the summary carrying the block, and cleanup_engine, which had
+    no test before. 147 tests in all.
+
+Changed:
+  - cleanup_engine and the summary share one definition of a snapshot,
+    _snapshot_files(): the files directly inside each camera folder under
+    base_output_folder. What cleanup deletes does not change; a file loose
+    in base_output_folder, or in a folder inside a camera folder, is still
+    left alone and is not counted either.
+  - README, AGENTS.md and the QA brief describe the block.
+  - A read-through of every doc against ac.py fixed what had drifted:
+    ac.cfg.example's comments for species_threshold and confirm_window,
+    the README's dependencies line and diagram, the agent briefs, the note
+    on v0.19's DETECTIONS block, and cleanup_engine's docstring (it said
+    every 24 hours; it runs at startup and then every cleanup_interval
+    hours).
+  - The version rule is written into the developer, QA and
+    technical-writer briefs: VERSION in ac.py names the release being
+    worked toward, so the first change to ac.py after a release bumps it,
+    and cutting the release adds only the entry and the tag.
+  - ruff (dev-only) 0.17.2 -> 0.17.4 and pytest (dev-only) 9.1.1 -> 9.2.0,
+    Dependabot PRs #37 and #31.
+  - requirements.txt's notes on Dependabot's torch alerts count ten
+    advisories. The tenth, CVE-2026-24747, which GitHub began matching to
+    torch on 2026-11-04, does not apply: no model load goes through
+    weights_only=True. The notes also say why PytorchWildlife 1.3.1, the
+    library's final release, is not adopted: nothing it changes is on a
+    path ac.py uses, and its gradio<5 requirement would pull gradio-client,
+    markupsafe, pillow and tomlkit down in an installed environment.
+    Dependabot's PR for it (#36) was closed. Comments only, no pin
+    changed.
+
 v0.19 - 2026-11-01
 ------------------
 
