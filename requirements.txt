@@ -45,7 +45,7 @@ requests==2.34.2
 # if left unpinned -- pinning opencv-python-headless above avoids that
 # newer opencv in the first place, but pin numpy explicitly too so the
 # resolver can't drift here again.
-numpy==1.26.4
+numpy==2.5.5
 
 # torch/torchvision/torchaudio are pinned together because
 # PytorchWildlife declares all three unpinned, and torchaudio's compiled
